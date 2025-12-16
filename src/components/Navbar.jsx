@@ -9,14 +9,7 @@ export default function Navbar() {
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <header
-      className="
-        fixed top-0 left-0 right-0 z-50
-        h-16
-        border-b border-border
-        bg-background
-      "
-    >
+    <header className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-border bg-background shadow-sm">
       <div className="max-w-7xl mx-auto h-full px-6 flex items-center justify-between">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2 text-xl font-bold">
@@ -55,11 +48,7 @@ export default function Navbar() {
           <button
             onClick={toggleTheme}
             aria-label="Toggle theme"
-            className="
-              p-2 rounded-md
-              hover:bg-muted
-              transition
-            "
+            className="p-2 rounded-md hover:bg-muted transition"
           >
             {theme === "dark" ? (
               <Sun className="h-5 w-5" />

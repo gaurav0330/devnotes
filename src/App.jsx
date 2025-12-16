@@ -11,40 +11,38 @@ import Navbar from "@/components/Navbar";
 function App() {
   return (
     <BrowserRouter>
-      <Navbar />
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        
+        {/* ✅ FIXED: Single pt-16 padding, removed duplicate */}
+        <main className="pt-16">
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
 
-      {/* 👇 Push content below fixed header */}
-      <main className="pt-16">
-         <div className="pt-16 min-h-screen bg-background">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
+            <Route
+              path="/create"
+              element={
+                <ProtectedRoute>
+                  <CreateNote />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/create"
-            element={
-              <ProtectedRoute>
-                <CreateNote />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/edit/:slug"
+              element={
+                <ProtectedRoute>
+                  <EditNote />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/edit/:slug"
-            element={
-              <ProtectedRoute>
-                <EditNote />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route path="/note/:slug" element={<ViewNote />} />
-        </Routes>
-        </div>
-      </main>
-
-
+            <Route path="/note/:slug" element={<ViewNote />} />
+          </Routes>
+        </main>
+      </div>
     </BrowserRouter>
   );
 }
