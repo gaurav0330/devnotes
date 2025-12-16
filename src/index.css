@@ -1,47 +1,67 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* ===============================
+   THEME VARIABLES
+================================ */
 @layer base {
   :root {
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
+
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
+
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
+
     --primary: 221.2 83.2% 53.3%;
     --primary-foreground: 210 40% 98%;
+
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
+
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
+
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
+
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
+
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
+
     --radius: 0.5rem;
   }
 
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
+
     --card: 222.2 84% 4.9%;
     --card-foreground: 210 40% 98%;
+
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
+
     --primary: 217.2 91.2% 59.8%;
     --primary-foreground: 222.2 47.4% 11.2%;
+
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
+
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
+
     --accent: 217.2 32.6% 17.5%;
     --accent-foreground: 210 40% 98%;
+
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
+
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 224.3 76.3% 48%;
@@ -54,126 +74,112 @@
   }
 }
 
-/* Custom Animations */
+/* ===============================
+   ANIMATIONS
+================================ */
 @keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes slide-down {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes slide-up {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes scale-in {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+.animate-fade-in { animation: fade-in 0.5s ease-out; }
+.animate-slide-down { animation: slide-down 0.5s ease-out; }
+.animate-slide-up { animation: slide-up 0.5s ease-out; }
+
+/* ===============================
+   GLOBAL UX
+================================ */
+html { scroll-behavior: smooth; }
+
+::selection {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
 }
 
-@keyframes shake {
-  0%, 100% {
-    transform: translateX(0);
-  }
-  10%, 30%, 50%, 70%, 90% {
-    transform: translateX(-5px);
-  }
-  20%, 40%, 60%, 80% {
-    transform: translateX(5px);
-  }
-}
-
-@keyframes pulse-slow {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.animate-fade-in {
-  animation: fade-in 0.5s ease-out;
-}
-
-.animate-slide-down {
-  animation: slide-down 0.5s ease-out;
-}
-
-.animate-slide-up {
-  animation: slide-up 0.5s ease-out;
-}
-
-.animate-scale-in {
-  animation: scale-in 0.3s ease-out;
-}
-
-.animate-shake {
-  animation: shake 0.5s ease-out;
-}
-
-/* Smooth scrolling */
-html {
-  scroll-behavior: smooth;
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 12px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-}
-
+/* Scrollbar */
+::-webkit-scrollbar { width: 12px; }
+::-webkit-scrollbar-track { background: hsl(var(--muted)); }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: hsl(var(--border));
   border-radius: 6px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: hsl(var(--ring));
 }
 
-/* Selection */
-::selection {
-  background: #3b82f6;
-  color: white;
+/* ===============================
+   PROSE (EDITOR + VIEW)
+================================ */
+.prose {
+  color: hsl(var(--foreground));
 }
 
-/* Focus visible */
-:focus-visible {
-  outline: 2px solid #3b82f6;
-  outline-offset: 2px;
+.prose h1,
+.prose h2,
+.prose h3,
+.prose strong {
+  color: hsl(var(--foreground));
+  font-weight: 700;
 }
 
-/* Line clamp utilities */
+.prose h1 { font-size: 2.25rem; margin-top: 2rem; }
+.prose h2 { font-size: 1.875rem; margin-top: 1.5rem; }
+.prose h3 { font-size: 1.5rem; margin-top: 1rem; }
+
+.prose p {
+  margin-bottom: 1rem;
+  line-height: 1.75;
+}
+
+.prose ul,
+.prose ol {
+  margin-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.prose blockquote {
+  border-left: 4px solid hsl(var(--primary));
+  padding-left: 1.5rem;
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+
+.prose pre {
+  background-color: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+  padding: 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+}
+
+.prose code {
+  background-color: hsl(var(--muted));
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+}
+
+.prose a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+}
+
+.prose a:hover {
+  opacity: 0.85;
+}
+
+/* ===============================
+   UTILITIES
+================================ */
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -186,130 +192,4 @@ html {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-
-/* Rich text editor styles */
-[contentEditable="true"] {
-  outline: none;
-}
-
-[contentEditable="true"]:focus {
-  outline: none;
-}
-
-/* Prose improvements for better typography */
-.prose {
-  color: #1f2937;
-}
-
-.prose h1 {
-  font-size: 2.25rem;
-  font-weight: 700;
-  margin-bottom: 1rem;
-  margin-top: 2rem;
-  color: #111827;
-}
-
-.prose h2 {
-  font-size: 1.875rem;
-  font-weight: 700;
-  margin-bottom: 0.75rem;
-  margin-top: 1.5rem;
-  color: #111827;
-}
-
-.prose h3 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-  margin-top: 1rem;
-  color: #111827;
-}
-
-.prose p {
-  margin-bottom: 1rem;
-  line-height: 1.75;
-}
-
-.prose ul {
-  list-style-type: disc;
-  margin-left: 1.5rem;
-  margin-bottom: 1rem;
-}
-
-.prose ol {
-  list-style-type: decimal;
-  margin-left: 1.5rem;
-  margin-bottom: 1rem;
-}
-
-.prose li {
-  margin-bottom: 0.5rem;
-}
-
-.prose blockquote {
-  border-left: 4px solid #3b82f6;
-  padding-left: 1.5rem;
-  font-style: italic;
-  color: #4b5563;
-  margin: 1rem 0;
-}
-
-.prose pre {
-  background-color: #111827;
-  color: #f3f4f6;
-  padding: 1rem;
-  border-radius: 0.5rem;
-  overflow-x: auto;
-  margin-bottom: 1rem;
-}
-
-.prose code {
-  font-size: 0.875rem;
-  font-family: monospace;
-  background-color: #f3f4f6;
-  padding: 0.125rem 0.5rem;
-  border-radius: 0.25rem;
-}
-
-.prose a {
-  color: #2563eb;
-  text-decoration: underline;
-}
-
-.prose a:hover {
-  color: #1e40af;
-}
-
-.prose strong {
-  font-weight: 700;
-  color: #111827;
-}
-
-.prose em {
-  font-style: italic;
-}
-
-/* Gradient text */
-.gradient-text {
-  background: linear-gradient(to right, #2563eb, #9333ea);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* Loading spinner */
-.spinner {
-  animation: spin 1s linear infinite;
-  height: 1.25rem;
-  width: 1.25rem;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 9999px;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }

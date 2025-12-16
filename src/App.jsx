@@ -12,31 +12,39 @@ function App() {
   return (
     <BrowserRouter>
       <Navbar />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
 
-        <Route
-          path="/create"
-          element={
-            <ProtectedRoute>
-              <CreateNote />
-            </ProtectedRoute>
-          }
-        />
+      {/* 👇 Push content below fixed header */}
+      <main className="pt-16">
+         <div className="pt-16 min-h-screen bg-background">
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
 
-        <Route
-          path="/edit/:slug"
-          element={
-            <ProtectedRoute>
-              <EditNote />
-            </ProtectedRoute>
-          }
-        />
+          <Route
+            path="/create"
+            element={
+              <ProtectedRoute>
+                <CreateNote />
+              </ProtectedRoute>
+            }
+          />
 
-        <Route path="/note/:slug" element={<ViewNote />} />
-      </Routes>
+          <Route
+            path="/edit/:slug"
+            element={
+              <ProtectedRoute>
+                <EditNote />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route path="/note/:slug" element={<ViewNote />} />
+        </Routes>
+        </div>
+      </main>
+
+
     </BrowserRouter>
   );
 }

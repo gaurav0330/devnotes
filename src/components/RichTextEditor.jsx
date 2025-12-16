@@ -15,127 +15,137 @@ import {
   Code,
   Undo,
   Redo,
+  Plus,
+  Minus,
 } from "lucide-react";
 
 export default function RichTextEditor({ value, onChange, placeholder }) {
   const editorRef = useRef(null);
   const [isFocused, setIsFocused] = useState(false);
+  const [fontSize, setFontSize] = useState(3); // default browser font size
 
   useEffect(() => {
-    if (editorRef.current && value && editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = value;
+    if (editorRef.current && value !== editorRef.current.innerHTML) {
+      editorRef.current.innerHTML = value || "";
     }
-  }, []);
+  }, [value]);
 
-  const execCmd = (command, value = null) => {
-    document.execCommand(command, false, value);
+  const execCmd = (cmd, val = null) => {
+    document.execCommand(cmd, false, val);
     editorRef.current?.focus();
     handleInput();
   };
 
   const handleInput = () => {
-    if (onChange && editorRef.current) {
-      onChange(editorRef.current.innerHTML);
-    }
+    onChange?.(editorRef.current.innerHTML);
   };
 
-  const formatBlock = (tag) => {
-    execCmd("formatBlock", tag);
+  const changeFontSize = (delta) => {
+    const newSize = Math.min(7, Math.max(1, fontSize + delta));
+    setFontSize(newSize);
+    execCmd("fontSize", newSize);
   };
 
-  const toolbarButtons = [
-    { icon: Undo, cmd: "undo", tooltip: "Undo" },
-    { icon: Redo, cmd: "redo", tooltip: "Redo" },
-    { type: "divider" },
-    { icon: Bold, cmd: "bold", tooltip: "Bold (Ctrl+B)" },
-    { icon: Italic, cmd: "italic", tooltip: "Italic (Ctrl+I)" },
-    { icon: Underline, cmd: "underline", tooltip: "Underline (Ctrl+U)" },
-    { type: "divider" },
-    {
-      icon: Heading1,
-      cmd: () => formatBlock("h1"),
-      tooltip: "Heading 1",
-    },
-    {
-      icon: Heading2,
-      cmd: () => formatBlock("h2"),
-      tooltip: "Heading 2",
-    },
-    { type: "divider" },
-    { icon: AlignLeft, cmd: "justifyLeft", tooltip: "Align Left" },
-    { icon: AlignCenter, cmd: "justifyCenter", tooltip: "Align Center" },
-    { icon: AlignRight, cmd: "justifyRight", tooltip: "Align Right" },
-    { type: "divider" },
-    { icon: List, cmd: "insertUnorderedList", tooltip: "Bullet List" },
-    { icon: ListOrdered, cmd: "insertOrderedList", tooltip: "Numbered List" },
-    { type: "divider" },
-    { icon: Quote, cmd: "formatBlock", value: "blockquote", tooltip: "Quote" },
-    {
-      icon: Code,
-      cmd: "formatBlock",
-      value: "pre",
-      tooltip: "Code Block",
-    },
+  const formatBlock = (tag) => execCmd("formatBlock", tag);
+
+  const tools = [
+    { icon: Undo, cmd: "undo" },
+    { icon: Redo, cmd: "redo" },
+    "divider",
+    { icon: Bold, cmd: "bold" },
+    { icon: Italic, cmd: "italic" },
+    { icon: Underline, cmd: "underline" },
+    "divider",
+    { icon: Heading1, cmd: () => formatBlock("h1") },
+    { icon: Heading2, cmd: () => formatBlock("h2") },
+    "divider",
+    { icon: AlignLeft, cmd: "justifyLeft" },
+    { icon: AlignCenter, cmd: "justifyCenter" },
+    { icon: AlignRight, cmd: "justifyRight" },
+    "divider",
+    { icon: List, cmd: "insertUnorderedList" },
+    { icon: ListOrdered, cmd: "insertOrderedList" },
+    "divider",
+    { icon: Quote, cmd: () => formatBlock("blockquote") },
+    { icon: Code, cmd: () => formatBlock("pre") },
   ];
 
   return (
     <div
-      className={`border rounded-lg overflow-hidden transition-all duration-300 ${
+      className={`rounded-lg border flex flex-col transition-all ${
         isFocused
-          ? "ring-2 ring-blue-500 border-blue-500 shadow-lg"
-          : "border-gray-300 hover:border-gray-400"
+          ? "border-primary ring-2 ring-primary/30"
+          : "border-border"
       }`}
     >
-      {/* Toolbar */}
-      <div className="bg-gray-50 border-b p-2 flex flex-wrap gap-1">
-        {toolbarButtons.map((btn, idx) =>
-          btn.type === "divider" ? (
-            <div key={idx} className="w-px bg-gray-300 mx-1" />
+      {/* 🔒 STICKY TOOLBAR */}
+      <div className="sticky top-0 z-10 flex flex-wrap gap-1 border-b border-border bg-muted p-2">
+        {tools.map((t, i) =>
+          t === "divider" ? (
+            <div key={i} className="w-px bg-border mx-1" />
           ) : (
             <Button
-              key={idx}
+              key={i}
               variant="ghost"
               size="sm"
-              className="h-8 w-8 p-0 hover:bg-gray-200 transition-colors"
-              onClick={(e) => {
+              className="h-8 w-8 p-0"
+              onMouseDown={(e) => {
                 e.preventDefault();
-                if (typeof btn.cmd === "function") {
-                  btn.cmd();
-                } else {
-                  execCmd(btn.cmd, btn.value);
-                }
+                typeof t.cmd === "function"
+                  ? t.cmd()
+                  : execCmd(t.cmd);
               }}
-              title={btn.tooltip}
             >
-              <btn.icon className="h-4 w-4" />
+              <t.icon className="h-4 w-4" />
             </Button>
           )
         )}
+
+        {/* FONT SIZE */}
+        <div className="flex items-center gap-1 ml-auto">
+          <Button
+            variant="ghost"
+            size="sm"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              changeFontSize(-1);
+            }}
+          >
+            <Minus className="h-4 w-4" />
+          </Button>
+
+          <span className="text-xs text-muted-foreground">
+            A{fontSize}
+          </span>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              changeFontSize(1);
+            }}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
-      {/* Editor */}
+      {/* ✍️ SCROLLABLE EDITOR */}
       <div
         ref={editorRef}
         contentEditable
         onInput={handleInput}
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}
-        className="min-h-[400px] p-6 focus:outline-none prose prose-sm max-w-none
-                   prose-headings:font-bold prose-h1:text-3xl prose-h2:text-2xl
-                   prose-p:text-gray-700 prose-p:leading-relaxed
-                   prose-ul:list-disc prose-ol:list-decimal
-                   prose-blockquote:border-l-4 prose-blockquote:border-blue-500 prose-blockquote:pl-4 prose-blockquote:italic
-                   prose-pre:bg-gray-100 prose-pre:p-4 prose-pre:rounded prose-code:text-sm"
         data-placeholder={placeholder}
-        style={{
-          minHeight: "400px",
-        }}
+        className="min-h-[400px] max-h-[70vh] overflow-y-auto p-6 focus:outline-none prose max-w-none bg-background text-foreground"
       />
 
-      <style jsx>{`
-        [contentEditable="true"]:empty:before {
+      <style>{`
+        [contenteditable][data-placeholder]:empty:before {
           content: attr(data-placeholder);
-          color: #9ca3af;
+          color: hsl(var(--muted-foreground));
           pointer-events: none;
         }
       `}</style>

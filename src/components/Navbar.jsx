@@ -1,28 +1,36 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
-import { Plus, LogOut, LogIn, FileText } from "lucide-react";
+import { Plus, LogOut, LogIn, FileText, Sun, Moon } from "lucide-react";
+import { useTheme } from "@/hooks/useTheme";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   return (
-    <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50 backdrop-blur-sm bg-white/90">
-      <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-        <Link
-          to="/"
-          className="flex items-center gap-2 text-2xl font-bold text-gray-900 hover:text-blue-600 transition-colors"
-        >
-          <FileText className="h-7 w-7 text-blue-600" />
+    <header
+      className="
+        fixed top-0 left-0 right-0 z-50
+        h-16
+        border-b border-border
+        bg-background
+      "
+    >
+      <div className="max-w-7xl mx-auto h-full px-6 flex items-center justify-between">
+        {/* Logo */}
+        <Link to="/" className="flex items-center gap-2 text-xl font-bold">
+          <FileText className="h-6 w-6 text-primary" />
           <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             DevNotes
           </span>
         </Link>
 
-        <div className="flex gap-3 items-center">
+        {/* Actions */}
+        <div className="flex items-center gap-3">
           {user && (
             <Link to="/create">
-              <Button className="bg-blue-600 hover:bg-blue-700 transition-all transform hover:scale-105">
+              <Button size="sm">
                 <Plus className="h-4 w-4 mr-2" />
                 Create Note
               </Button>
@@ -30,24 +38,37 @@ export default function Navbar() {
           )}
 
           {user ? (
-            <Button
-              variant="outline"
-              onClick={logout}
-              className="hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-all"
-            >
+            <Button size="sm" variant="outline" onClick={logout}>
               <LogOut className="h-4 w-4 mr-2" />
               Logout
             </Button>
           ) : (
             <Link to="/login">
-              <Button variant="outline" className="hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 transition-all">
+              <Button size="sm" variant="outline">
                 <LogIn className="h-4 w-4 mr-2" />
                 Login
               </Button>
             </Link>
           )}
+
+          {/* Theme Toggle */}
+          <button
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+            className="
+              p-2 rounded-md
+              hover:bg-muted
+              transition
+            "
+          >
+            {theme === "dark" ? (
+              <Sun className="h-5 w-5" />
+            ) : (
+              <Moon className="h-5 w-5" />
+            )}
+          </button>
         </div>
       </div>
-    </div>
+    </header>
   );
 }
