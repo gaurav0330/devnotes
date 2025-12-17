@@ -34,20 +34,26 @@ export default function ViewNote() {
   useEffect(() => {
     const loadNote = async () => {
       try {
-        // Try public note first
+        // 1️⃣ Try public note first
         const publicNote = await getPublicNoteBySlug(slug);
         if (publicNote) {
-          setNote({ ...publicNote, visibility: "public" });
-          setIsOwner(user && publicNote.userId === user.uid);
+          setNote({
+            ...publicNote,
+            visibility: "public",
+          });
+          setIsOwner(Boolean(user && publicNote.userId === user.uid));
           setLoading(false);
           return;
         }
 
-        // Try private note if logged in
+        // 2️⃣ Try private note (owner only)
         if (user) {
           const privateNote = await getPrivateNoteBySlug(user.uid, slug);
           if (privateNote) {
-            setNote(privateNote);
+            setNote({
+              ...privateNote,
+              visibility: privateNote.visibility || "private",
+            });
             setIsOwner(true);
             setLoading(false);
             return;
@@ -55,10 +61,10 @@ export default function ViewNote() {
         }
 
         setNote(null);
-        setLoading(false);
       } catch (err) {
         console.error(err);
         setNote(null);
+      } finally {
         setLoading(false);
       }
     };
@@ -66,22 +72,28 @@ export default function ViewNote() {
     loadNote();
   }, [slug, user]);
 
+  /* ----------------------------------------
+     DELETE NOTE (FIXED)
+  ---------------------------------------- */
   const handleDelete = async () => {
-    if (!isOwner || !note) return;
+    if (!isOwner || !note || !user) return;
 
     const confirmed = window.confirm(
       "Are you sure you want to delete this note? This action cannot be undone."
     );
-    
     if (!confirmed) return;
 
     setDeleting(true);
     try {
-      await deleteNoteById(user.uid, note.id);
-      navigate("/");
+      // 🔥 CRITICAL FIX
+      const privateNoteId = note.privateNoteId || note.id;
+
+      await deleteNoteById(user.uid, privateNoteId);
+
+      navigate("/", { replace: true });
     } catch (error) {
       console.error(error);
-      alert("Failed to delete note. Please try again.");
+      alert("Failed to delete note.");
       setDeleting(false);
     }
   };
@@ -108,11 +120,8 @@ export default function ViewNote() {
   /* LOADING */
   if (loading) {
     return (
-      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-background">
-        <div className="text-center space-y-4 animate-fade-in">
-          <div className="spinner h-12 w-12 mx-auto" />
-          <p className="text-muted-foreground">Loading note...</p>
-        </div>
+      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center">
+        <p className="text-muted-foreground">Loading note...</p>
       </div>
     );
   }
@@ -120,206 +129,106 @@ export default function ViewNote() {
   /* NOT FOUND */
   if (!note) {
     return (
-      <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center bg-background animate-fade-in">
-        <div className="text-center space-y-4 max-w-md p-8">
-          <div className="text-6xl mb-4">📭</div>
-          <h2 className="text-3xl font-bold text-foreground">
-            Note Not Found
-          </h2>
-          <p className="text-muted-foreground text-lg">
-            This note doesn't exist or you don't have permission to view it.
-          </p>
-          <Button size="lg" onClick={() => navigate("/")} className="mt-6">
-            <ArrowLeft className="mr-2 h-5 w-5" />
-            Back to Home
-          </Button>
-        </div>
+      <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center">
+        <h2 className="text-2xl font-bold">Note Not Found</h2>
+        <Button className="mt-4" onClick={() => navigate("/")}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back Home
+        </Button>
       </div>
     );
   }
 
   /* MAIN VIEW */
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-background">
-      <div className="max-w-4xl mx-auto p-4 md:p-8 animate-fade-in">
-        {/* Top Navigation */}
-        <div className="mb-6 flex items-center justify-between">
-          <Button 
-            variant="ghost" 
-            onClick={() => navigate("/")}
-            className="gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
+    <div className="min-h-[calc(100vh-4rem)]">
+      <div className="max-w-4xl mx-auto p-6">
+        {/* Header */}
+        <div className="flex justify-between mb-6">
+          <Button variant="ghost" onClick={() => navigate("/")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
 
-          {/* Quick Actions (Owner Only) */}
           {isOwner && (
             <div className="flex gap-2">
-              <Button 
+              <Button
                 variant="outline"
                 onClick={() => navigate(`/edit/${slug}`)}
-                className="gap-2"
               >
-                <Edit className="h-4 w-4" />
-                <span className="hidden sm:inline">Edit</span>
+                <Edit className="h-4 w-4 mr-2" />
+                Edit
               </Button>
-              <Button 
+
+              <Button
                 variant="destructive"
-                onClick={handleDelete}
                 disabled={deleting}
-                className="gap-2"
+                onClick={handleDelete}
               >
-                <Trash2 className="h-4 w-4" />
-                <span className="hidden sm:inline">
-                  {deleting ? "Deleting..." : "Delete"}
-                </span>
+                <Trash2 className="h-4 w-4 mr-2" />
+                {deleting ? "Deleting..." : "Delete"}
               </Button>
             </div>
           )}
         </div>
 
-        {/* Main Card */}
-        <div className="rounded-xl border-2 border-border bg-card shadow-lg overflow-hidden">
-          {/* Header Section */}
-          <div className="border-b border-border bg-muted/30 p-6 md:p-8 space-y-4">
-            {/* Title */}
-            <h1 className="text-3xl md:text-4xl font-bold text-foreground leading-tight break-words">
-              {note.title}
-            </h1>
+        {/* Card */}
+        <div className="border rounded-xl overflow-hidden">
+          <div className="p-6 border-b bg-muted/30">
+            <h1 className="text-3xl font-bold mb-4">{note.title}</h1>
 
-            {/* Meta Info */}
             <div className="flex flex-wrap gap-4 text-sm">
-              <div className="flex items-center gap-2 text-muted-foreground">
+              <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4" />
-                <span>{formatDate(note.createdAt)}</span>
+                {formatDate(note.createdAt)}
               </div>
 
-              <div className="flex items-center gap-2">
-                {note.visibility === "public" ? (
-                  <>
-                    <Globe className="h-4 w-4 text-green-600 dark:text-green-400" />
-                    <span className="text-green-600 dark:text-green-400 font-semibold">
-                      Public
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <Lock className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-muted-foreground font-medium">
-                      Private
-                    </span>
-                  </>
-                )}
-              </div>
+              {note.visibility === "public" ? (
+                <div className="flex items-center gap-2 text-green-600">
+                  <Globe className="h-4 w-4" /> Public
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Lock className="h-4 w-4" /> Private
+                </div>
+              )}
 
               {isOwner && (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <User className="h-4 w-4" />
-                  <span>Your note</span>
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4" /> Your note
                 </div>
               )}
             </div>
 
             {/* Tags */}
-            {note.tags && note.tags.length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap pt-2">
-                <Tag className="h-4 w-4 text-muted-foreground" />
-                {note.tags.map((tag, i) => (
-                  <span
-                    key={i}
-                    className="badge badge-primary"
-                  >
-                    {tag}
+            {note.tags?.length > 0 && (
+              <div className="flex gap-2 mt-4 flex-wrap">
+                <Tag className="h-4 w-4" />
+                {note.tags.map((t, i) => (
+                  <span key={i} className="badge badge-primary">
+                    {t}
                   </span>
                 ))}
               </div>
             )}
 
-            {/* Share Link Box */}
+            {/* Share */}
             {note.visibility === "public" && (
-              <div className="mt-6 p-4 rounded-lg border border-border bg-background/50">
-                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-muted-foreground mb-1 font-medium">
-                      Share this note:
-                    </p>
-                    <p className="text-sm font-mono text-foreground break-all">
-                      {window.location.href}
-                    </p>
-                  </div>
-                  <Button 
-                    size="sm" 
-                    onClick={copyLink}
-                    variant={copied ? "default" : "outline"}
-                    className="gap-2 shrink-0"
-                  >
-                    {copied ? (
-                      <>
-                        <Check className="h-4 w-4" />
-                        Copied!
-                      </>
-                    ) : (
-                      <>
-                        <Share2 className="h-4 w-4" />
-                        Copy
-                      </>
-                    )}
-                  </Button>
-                </div>
+              <div className="mt-6 flex items-center gap-3">
+                <code className="text-sm flex-1 truncate">
+                  {window.location.href}
+                </code>
+                <Button size="sm" onClick={copyLink}>
+                  {copied ? <Check className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
+                </Button>
               </div>
             )}
           </div>
 
           {/* Content */}
-          <div className="p-6 md:p-10">
-            <div
-              className="prose prose-lg dark:prose-invert max-w-none"
-              dangerouslySetInnerHTML={{ __html: note.content }}
-            />
+          <div className="p-6 prose dark:prose-invert max-w-none">
+            <div dangerouslySetInnerHTML={{ __html: note.content }} />
           </div>
-
-          {/* Bottom Actions (Owner Only - Desktop) */}
-          {isOwner && (
-            <div className="border-t border-border bg-muted/30 p-6 hidden md:flex gap-3">
-              <Button 
-                onClick={() => navigate(`/edit/${slug}`)}
-                size="lg"
-                className="gap-2"
-              >
-                <Edit className="h-5 w-5" />
-                Edit Note
-              </Button>
-
-              <Button
-                variant="destructive"
-                size="lg"
-                disabled={deleting}
-                onClick={handleDelete}
-                className="gap-2"
-              >
-                {deleting ? (
-                  <>
-                    <div className="spinner h-5 w-5" />
-                    Deleting...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="h-5 w-5" />
-                    Delete Note
-                  </>
-                )}
-              </Button>
-            </div>
-          )}
         </div>
-
-        {/* Info Footer */}
-        {!isOwner && note.visibility === "public" && (
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            <p>This is a public note shared with you</p>
-          </div>
-        )}
       </div>
     </div>
   );

@@ -215,6 +215,10 @@ export const updateNote = async ({
    DELETE NOTE (PRIVATE + PUBLIC)
 --------------------------------------------------- */
 export const deleteNoteById = async (userId, noteId) => {
+  if (!userId || !noteId) {
+    throw new Error("Missing userId or noteId");
+  }
+
   try {
     // Delete private note
     await deleteDoc(doc(db, "users", userId, "notes", noteId));

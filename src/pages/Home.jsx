@@ -2,29 +2,31 @@ import { useEffect, useState } from "react";
 import { getUserNotes } from "@/lib/notes.service";
 import { useAuth } from "@/context/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
-import { Link } from "react-router-dom";
+import { Link ,useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Plus, Calendar, Globe, Lock, FileText, Search, Tag } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 export default function Home() {
   const { user } = useAuth();
+  const location = useLocation();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
-    if (!user) {
-      setNotes([]);
-      setLoading(false);
-      return;
-    }
+useEffect(() => {
+  if (!user) {
+    setNotes([]);
+    setLoading(false);
+    return;
+  }
 
-    getUserNotes(user.uid)
-      .then(setNotes)
-      .catch(() => setNotes([]))
-      .finally(() => setLoading(false));
-  }, [user]);
+  setLoading(true);
+  getUserNotes(user.uid)
+    .then(setNotes)
+    .catch(() => setNotes([]))
+    .finally(() => setLoading(false));
+}, [user, location.state?.refreshTime]); // Use refreshTime instead
 
   const formatDate = (timestamp) => {
     if (!timestamp) return "";

@@ -413,3 +413,16 @@ button:focus-visible {
   outline: 2px solid hsl(var(--primary));
   outline-offset: 2px;
 }
+
+/* ===============================
+   FIX DESTRUCTIVE BUTTON VISIBILITY
+================================ */
+button[data-variant="destructive"] {
+  color: hsl(var(--destructive-foreground)) !important;
+  background-color: hsl(var(--destructive)) !important;
+}
+
+button[data-variant="destructive"] svg {
+  color: hsl(var(--destructive-foreground)) !important;
+}
+
