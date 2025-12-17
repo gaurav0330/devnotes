@@ -1,11 +1,15 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { getPrivateNoteBySlug, updateNote } from "@/lib/notes.service";
+import {
+  getPrivateNoteBySlug,
+  updateNote,
+  getUserFolders,
+} from "@/lib/notes.service";
 import { useAuth } from "@/context/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import RichTextEditor from "@/components/RichTextEditor";
-import { Save, ArrowLeft, Tag } from "lucide-react";
+import { Save, ArrowLeft, Tag, Folder } from "lucide-react";
 
 export default function EditNote() {
   const { slug } = useParams();
@@ -13,10 +17,14 @@ export default function EditNote() {
   const { user } = useAuth();
 
   const [note, setNote] = useState(null);
+  const [folders, setFolders] = useState([]);
   const [saving, setSaving] = useState(false);
   const [tags, setTags] = useState("");
   const [dirty, setDirty] = useState(false);
 
+  /* ----------------------------------------
+     LOAD NOTE
+  ---------------------------------------- */
   useEffect(() => {
     if (!user) return;
 
@@ -27,6 +35,17 @@ export default function EditNote() {
     });
   }, [slug, user, navigate]);
 
+  /* ----------------------------------------
+     LOAD FOLDERS
+  ---------------------------------------- */
+  useEffect(() => {
+    if (!user) return;
+    getUserFolders(user.uid).then(setFolders).catch(() => setFolders([]));
+  }, [user]);
+
+  /* ----------------------------------------
+     DIRTY PAGE WARNING
+  ---------------------------------------- */
   useEffect(() => {
     const handler = (e) => {
       if (!dirty) return;
@@ -37,18 +56,32 @@ export default function EditNote() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty]);
 
+  /* ----------------------------------------
+     UPDATE NOTE
+  ---------------------------------------- */
   const handleUpdate = async () => {
+    if (!note) return;
+
     setSaving(true);
-    await updateNote({
-      userId: user.uid,
-      noteId: note.id,
-      title: note.title,
-      content: note.content,
-      tags: tags.split(",").map(t => t.trim()).filter(Boolean),
-      visibility: note.visibility,
-    });
-    setDirty(false);
-    navigate(`/note/${slug}`);
+    try {
+      await updateNote({
+        userId: user.uid,
+        noteId: note.id,
+        title: note.title,
+        content: note.content,
+        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+        visibility: note.visibility,
+        folderId: note.folderId ?? null, // 🔥 NEW
+      });
+
+      setDirty(false);
+      navigate(`/note/${slug}`);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update note");
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!note) return null;
@@ -79,7 +112,7 @@ export default function EditNote() {
         {/* Meta row */}
         <div className="flex flex-wrap gap-3 items-center">
           {/* Tags */}
-          <div className="flex-1 min-w-[240px] relative">
+          <div className="flex-1 min-w-[220px] relative">
             <Tag className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               className="pl-10"
@@ -90,6 +123,29 @@ export default function EditNote() {
               }}
               placeholder="Tags (comma separated)"
             />
+          </div>
+
+          {/* Folder Selector (NEW) */}
+          <div className="relative min-w-[180px]">
+            <Folder className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <select
+              className="h-[42px] w-full rounded-lg border border-border bg-background pl-10 pr-4 cursor-pointer"
+              value={note.folderId || ""}
+              onChange={(e) => {
+                setDirty(true);
+                setNote({
+                  ...note,
+                  folderId: e.target.value || null,
+                });
+              }}
+            >
+              <option value="">📂 Unfiled</option>
+              {folders.map((folder) => (
+                <option key={folder.id} value={folder.id}>
+                  📁 {folder.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Visibility */}

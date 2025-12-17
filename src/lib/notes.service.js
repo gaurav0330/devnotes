@@ -11,6 +11,35 @@ import {
 import { db } from "./firebase";
 import LZString from "lz-string";
 
+
+/* ===============================
+   FOLDER METHODS (NEW)
+================================ */
+
+// Create folder
+export const createFolder = async (userId, name) => {
+  if (!name.trim()) throw new Error("Folder name required");
+
+  await addDoc(collection(db, "users", userId, "folders"), {
+    name: name.trim(),
+    createdAt: Date.now(),
+  });
+};
+
+// Get folders
+export const getUserFolders = async (userId) => {
+  const snap = await getDocs(collection(db, "users", userId, "folders"));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+};
+
+// Move note to folder
+export const moveNoteToFolder = async (userId, noteId, folderId) => {
+  await updateDoc(doc(db, "users", userId, "notes", noteId), {
+    folderId: folderId ?? null,
+    updatedAt: Date.now(),
+  });
+};
+
 /* ---------------------------------------------------
    COMPRESSION HELPERS
 --------------------------------------------------- */
@@ -83,6 +112,7 @@ export const createNote = async ({
       slug,
       tags: tags.filter((t) => t.trim()),
       visibility,
+      folderId: null,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -193,6 +223,7 @@ export const updateNote = async ({
   content,
   tags = [],
   visibility,
+  folderId
 }) => {
   try {
     const cleanTitle = title.trim();
@@ -212,6 +243,7 @@ export const updateNote = async ({
       isCompressed: true,
       tags: tags.filter((t) => t.trim()),
       visibility,
+      folderId: folderId ?? null,
       updatedAt: Date.now(),
     });
 
@@ -290,4 +322,32 @@ export const deleteNoteById = async (userId, noteId) => {
     console.error("Error deleting note:", error);
     throw error;
   }
+};
+
+/* ===============================
+   FOLDER DELETE (SAFE)
+================================ */
+
+export const deleteFolder = async (userId, folderId) => {
+  if (!userId || !folderId) throw new Error("Missing data");
+
+  // 1️⃣ Move all notes to Unfiled
+  const notesSnap = await getDocs(
+    query(
+      collection(db, "users", userId, "notes"),
+      where("folderId", "==", folderId)
+    )
+  );
+
+  const updates = notesSnap.docs.map((d) =>
+    updateDoc(doc(db, "users", userId, "notes", d.id), {
+      folderId: null,
+      updatedAt: Date.now(),
+    })
+  );
+
+  await Promise.all(updates);
+
+  // 2️⃣ Delete folder
+  await deleteDoc(doc(db, "users", userId, "folders", folderId));
 };
