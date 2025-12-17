@@ -9,6 +9,31 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import LZString from "lz-string";
+
+/* ---------------------------------------------------
+   COMPRESSION HELPERS
+--------------------------------------------------- */
+
+// Compress HTML safely for Firestore
+const compressContent = (content) => {
+  if (!content) return "";
+  return LZString.compressToUTF16(content);
+};
+
+// Decompress safely (backward compatible)
+const decompressContent = (content, isCompressed) => {
+  if (!content) return "";
+  if (!isCompressed) return content;
+
+  const decompressed = LZString.decompressFromUTF16(content);
+  return decompressed ?? "";
+};
+
+// Optional safety check (after compression)
+const MAX_FIRESTORE_BYTES = 900_000;
+const isTooLarge = (value) =>
+  new Blob([value]).size > MAX_FIRESTORE_BYTES;
 
 /* ---------------------------------------------------
    HELPER: Generate unique slug
@@ -22,7 +47,6 @@ const generateSlug = (title) => {
     .replace(/-+/g, "-")
     .substring(0, 50);
 
-  // Add random suffix to ensure uniqueness
   const randomSuffix = Math.random().toString(36).substring(2, 8);
   return `${baseSlug}-${randomSuffix}`;
 };
@@ -39,17 +63,23 @@ export const createNote = async ({
 }) => {
   try {
     const cleanTitle = title.trim();
-    if (!cleanTitle) {
-      throw new Error("Title is required");
-    }
+    if (!cleanTitle) throw new Error("Title is required");
 
     const slug = generateSlug(cleanTitle);
+
+    // 🔒 Compress content
+    const compressedContent = compressContent(content);
+
+    if (isTooLarge(compressedContent)) {
+      throw new Error("Note is too large to save. Please shorten it.");
+    }
 
     // Create private note
     const privateRef = collection(db, "users", userId, "notes");
     const privateDoc = await addDoc(privateRef, {
       title: cleanTitle,
-      content,
+      content: compressedContent,
+      isCompressed: true,
       slug,
       tags: tags.filter((t) => t.trim()),
       visibility,
@@ -57,13 +87,14 @@ export const createNote = async ({
       updatedAt: Date.now(),
     });
 
-    // Create public copy if visibility is public
+    // Create public copy if needed
     if (visibility === "public") {
       await addDoc(collection(db, "publicNotes"), {
         privateNoteId: privateDoc.id,
         userId,
         title: cleanTitle,
-        content,
+        content: compressedContent,
+        isCompressed: true,
         slug,
         tags: tags.filter((t) => t.trim()),
         createdAt: Date.now(),
@@ -84,9 +115,16 @@ export const createNote = async ({
 export const getUserNotes = async (userId) => {
   try {
     const snap = await getDocs(collection(db, "users", userId, "notes"));
-    const notes = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    
-    // Sort by creation date, newest first
+
+    const notes = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...data,
+        content: decompressContent(data.content, data.isCompressed),
+      };
+    });
+
     return notes.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   } catch (error) {
     console.error("Error fetching user notes:", error);
@@ -95,7 +133,7 @@ export const getUserNotes = async (userId) => {
 };
 
 /* ---------------------------------------------------
-   READ: PUBLIC NOTE BY SLUG (SHARE LINK)
+   READ: PUBLIC NOTE BY SLUG
 --------------------------------------------------- */
 export const getPublicNoteBySlug = async (slug) => {
   try {
@@ -105,7 +143,13 @@ export const getPublicNoteBySlug = async (slug) => {
     if (snap.empty) return null;
 
     const docSnap = snap.docs[0];
-    return { id: docSnap.id, ...docSnap.data() };
+    const data = docSnap.data();
+
+    return {
+      id: docSnap.id,
+      ...data,
+      content: decompressContent(data.content, data.isCompressed),
+    };
   } catch (error) {
     console.error("Error fetching public note:", error);
     throw error;
@@ -113,7 +157,7 @@ export const getPublicNoteBySlug = async (slug) => {
 };
 
 /* ---------------------------------------------------
-   READ: PRIVATE NOTE BY SLUG (OWNER ONLY)
+   READ: PRIVATE NOTE BY SLUG
 --------------------------------------------------- */
 export const getPrivateNoteBySlug = async (userId, slug) => {
   try {
@@ -126,7 +170,13 @@ export const getPrivateNoteBySlug = async (userId, slug) => {
     if (snap.empty) return null;
 
     const docSnap = snap.docs[0];
-    return { id: docSnap.id, ...docSnap.data() };
+    const data = docSnap.data();
+
+    return {
+      id: docSnap.id,
+      ...data,
+      content: decompressContent(data.content, data.isCompressed),
+    };
   } catch (error) {
     console.error("Error fetching private note:", error);
     throw error;
@@ -146,15 +196,20 @@ export const updateNote = async ({
 }) => {
   try {
     const cleanTitle = title.trim();
-    if (!cleanTitle) {
-      throw new Error("Title is required");
+    if (!cleanTitle) throw new Error("Title is required");
+
+    const compressedContent = compressContent(content);
+
+    if (isTooLarge(compressedContent)) {
+      throw new Error("Note is too large to update. Please shorten it.");
     }
 
     // Update private note
     const privateRef = doc(db, "users", userId, "notes", noteId);
     await updateDoc(privateRef, {
       title: cleanTitle,
-      content,
+      content: compressedContent,
+      isCompressed: true,
       tags: tags.filter((t) => t.trim()),
       visibility,
       updatedAt: Date.now(),
@@ -171,34 +226,34 @@ export const updateNote = async ({
       const publicRef = doc(db, "publicNotes", snap.docs[0].id);
 
       if (visibility === "public") {
-        // Update existing public copy
         await updateDoc(publicRef, {
           title: cleanTitle,
-          content,
+          content: compressedContent,
+          isCompressed: true,
           tags: tags.filter((t) => t.trim()),
           updatedAt: Date.now(),
         });
       } else {
-        // Remove public copy if switched to private
         await deleteDoc(publicRef);
       }
     } else if (visibility === "public") {
-      // Create new public copy if switched from private to public
-      // Need to get the slug from the private note
+      // Create public copy if switching to public
       const privateSnap = await getDocs(
         query(
           collection(db, "users", userId, "notes"),
           where("__name__", "==", noteId)
         )
       );
-      
-      const slug = privateSnap.docs[0]?.data().slug || generateSlug(cleanTitle);
-      
+
+      const slug =
+        privateSnap.docs[0]?.data().slug || generateSlug(cleanTitle);
+
       await addDoc(collection(db, "publicNotes"), {
         privateNoteId: noteId,
         userId,
         title: cleanTitle,
-        content,
+        content: compressedContent,
+        isCompressed: true,
         slug,
         tags: tags.filter((t) => t.trim()),
         createdAt: Date.now(),
@@ -220,10 +275,8 @@ export const deleteNoteById = async (userId, noteId) => {
   }
 
   try {
-    // Delete private note
     await deleteDoc(doc(db, "users", userId, "notes", noteId));
 
-    // Delete public copy if exists
     const q = query(
       collection(db, "publicNotes"),
       where("privateNoteId", "==", noteId)
