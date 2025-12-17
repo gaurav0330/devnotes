@@ -27,7 +27,6 @@ export default function EditNote() {
     });
   }, [slug, user, navigate]);
 
-  // Warn before leaving
   useEffect(() => {
     const handler = (e) => {
       if (!dirty) return;
@@ -55,7 +54,7 @@ export default function EditNote() {
   if (!note) return null;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-[calc(100vh-4rem)] bg-background">
       <div className="max-w-5xl mx-auto p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
@@ -106,7 +105,7 @@ export default function EditNote() {
             <option value="public">🌍 Public</option>
           </select>
 
-          {/* Update Button (HERE ✅) */}
+          {/* Update Button */}
           <Button onClick={handleUpdate} disabled={saving}>
             {saving ? (
               "Saving..."

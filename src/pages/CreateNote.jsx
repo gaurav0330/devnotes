@@ -17,13 +17,19 @@ export default function CreateNote() {
   const [visibility, setVisibility] = useState("private");
   const [saving, setSaving] = useState(false);
 
+  const stripHtml = (html) => {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || "";
+  };
+
   const handleSave = async () => {
     if (!title.trim()) {
       alert("Please enter a title");
       return;
     }
 
-    if (!content.trim() || content === "<br>") {
+    if (!stripHtml(content).trim()) {
       alert("Please enter some content");
       return;
     }
@@ -46,7 +52,7 @@ export default function CreateNote() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-[calc(100vh-4rem)] bg-background">
       <div className="max-w-5xl mx-auto p-6 space-y-6 animate-fade-in">
         <h1 className="text-3xl font-bold text-foreground">
           Create New Note
@@ -82,7 +88,17 @@ export default function CreateNote() {
           </select>
 
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? "Saving..." : <><Save className="h-4 w-4 mr-2" />Save</>}
+            {saving ? (
+              <>
+                <div className="spinner h-4 w-4 mr-2" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save
+              </>
+            )}
           </Button>
         </div>
 
@@ -95,7 +111,7 @@ export default function CreateNote() {
 
         <p className="text-sm text-muted-foreground text-center">
           {visibility === "public"
-            ? "📢 This note will be publicly accessible via a shareable link"
+            ? "📢 This note will be publicly accessible"
             : "🔐 This note will be private"}
         </p>
       </div>

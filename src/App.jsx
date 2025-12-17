@@ -14,8 +14,8 @@ function App() {
       <div className="min-h-screen bg-background">
         <Navbar />
         
-        {/* ✅ FIXED: Single pt-16 padding, removed duplicate */}
-        <main className="pt-16">
+        {/* Main content with proper spacing */}
+        <main className="pt-16 min-h-screen">
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />

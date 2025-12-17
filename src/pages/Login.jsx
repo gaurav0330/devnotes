@@ -36,7 +36,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md border border-border shadow-xl animate-scale-in">
         <CardHeader className="text-center space-y-2">
           <CardTitle className="text-3xl font-bold text-foreground">
@@ -87,7 +87,7 @@ export default function Login() {
           </form>
 
           <p className="text-sm text-center text-muted-foreground mt-6">
-            Don’t have an account?{" "}
+            Don't have an account?{" "}
             <Link to="/signup" className="text-primary font-medium">
               Create one
             </Link>
