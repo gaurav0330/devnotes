@@ -1,12 +1,11 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
-import { Plus, LogOut, LogIn, FileText, Sun, Moon } from "lucide-react";
-import { useTheme } from "@/hooks/useTheme";
+import { Plus, LogOut, LogIn, FileText } from "lucide-react";
+import ThemePicker from "@/components/ThemePicker";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
 
   return (
     <header className="navbar-fixed h-16">
@@ -52,20 +51,8 @@ export default function Navbar() {
             </Link>
           )}
 
-          {/* Theme Toggle */}
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={toggleTheme}
-            aria-label="Toggle theme"
-            className="w-9 h-9 p-0"
-          >
-            {theme === "dark" ? (
-              <Sun className="h-5 w-5" />
-            ) : (
-              <Moon className="h-5 w-5" />
-            )}
-          </Button>
+          {/* Theme Picker */}
+          <ThemePicker />
         </div>
       </div>
     </header>

@@ -299,7 +299,7 @@ export const updateNote = async ({
 };
 
 /* ---------------------------------------------------
-   DELETE NOTE (PRIVATE + PUBLIC)
+   SOFT DELETE NOTE (MOVE TO TRASH)
 --------------------------------------------------- */
 export const deleteNoteById = async (userId, noteId) => {
   if (!userId || !noteId) {
@@ -307,8 +307,13 @@ export const deleteNoteById = async (userId, noteId) => {
   }
 
   try {
-    await deleteDoc(doc(db, "users", userId, "notes", noteId));
+    const privateRef = doc(db, "users", userId, "notes", noteId);
+    await updateDoc(privateRef, {
+      deletedAt: Date.now(),
+      folderId: "trash" // Move to trash virtually
+    });
 
+    // If it's public, remove the public copy immediately for privacy
     const q = query(
       collection(db, "publicNotes"),
       where("privateNoteId", "==", noteId)
@@ -317,9 +322,41 @@ export const deleteNoteById = async (userId, noteId) => {
 
     if (!snap.empty) {
       await deleteDoc(doc(db, "publicNotes", snap.docs[0].id));
+      await updateDoc(privateRef, { visibility: "private" });
     }
   } catch (error) {
-    console.error("Error deleting note:", error);
+    console.error("Error moving note to trash:", error);
+    throw error;
+  }
+};
+
+/* ---------------------------------------------------
+   RESTORE NOTE FROM TRASH
+--------------------------------------------------- */
+export const restoreNoteById = async (userId, noteId) => {
+  if (!userId || !noteId) throw new Error("Missing userId or noteId");
+  
+  try {
+    await updateDoc(doc(db, "users", userId, "notes", noteId), {
+      deletedAt: null,
+      folderId: null // Move back to unfiled
+    });
+  } catch (error) {
+    console.error("Error restoring note:", error);
+    throw error;
+  }
+};
+
+/* ---------------------------------------------------
+   HARD DELETE NOTE (PERMANENT)
+--------------------------------------------------- */
+export const hardDeleteNoteById = async (userId, noteId) => {
+  if (!userId || !noteId) throw new Error("Missing userId or noteId");
+
+  try {
+    await deleteDoc(doc(db, "users", userId, "notes", noteId));
+  } catch (error) {
+    console.error("Error permanently deleting note:", error);
     throw error;
   }
 };
@@ -350,4 +387,17 @@ export const deleteFolder = async (userId, folderId) => {
 
   // 2️⃣ Delete folder
   await deleteDoc(doc(db, "users", userId, "folders", folderId));
+};
+
+/* ===============================
+   PINNING (NEW)
+================================ */
+
+export const togglePinNote = async (userId, noteId, currentPinned) => {
+  if (!userId || !noteId) throw new Error("Missing data");
+  
+  await updateDoc(doc(db, "users", userId, "notes", noteId), {
+    isPinned: !currentPinned,
+    updatedAt: Date.now(),
+  });
 };
