@@ -7,6 +7,7 @@ import {
   doc,
   deleteDoc,
   updateDoc,
+  getDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import LZString from "lz-string";
@@ -155,7 +156,9 @@ export const getUserNotes = async (userId) => {
       };
     });
 
-    return notes.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return notes
+      .filter((n) => n.type !== "tracker")
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   } catch (error) {
     console.error("Error fetching user notes:", error);
     throw error;
@@ -270,15 +273,11 @@ export const updateNote = async ({
       }
     } else if (visibility === "public") {
       // Create public copy if switching to public
-      const privateSnap = await getDocs(
-        query(
-          collection(db, "users", userId, "notes"),
-          where("__name__", "==", noteId)
-        )
-      );
+      const privateDocRef = doc(db, "users", userId, "notes", noteId);
+      const privateDocSnap = await getDoc(privateDocRef);
 
       const slug =
-        privateSnap.docs[0]?.data().slug || generateSlug(cleanTitle);
+        privateDocSnap.exists() ? privateDocSnap.data().slug : generateSlug(cleanTitle);
 
       await addDoc(collection(db, "publicNotes"), {
         privateNoteId: noteId,
@@ -400,4 +399,66 @@ export const togglePinNote = async (userId, noteId, currentPinned) => {
     isPinned: !currentPinned,
     updatedAt: Date.now(),
   });
+};
+
+/* ===============================
+   TRACKERS METHODS (NEW)
+================================ */
+
+// Fetch all trackers for a user
+export const getUserTrackers = async (userId) => {
+  if (!userId) throw new Error("Missing userId");
+  try {
+    const snap = await getDocs(collection(db, "users", userId, "notes"));
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((n) => n.type === "tracker");
+  } catch (error) {
+    console.error("Error fetching trackers:", error);
+    throw error;
+  }
+};
+
+// Create a tracker
+export const createTracker = async (userId, name) => {
+  if (!userId || !name.trim()) throw new Error("Missing data");
+  try {
+    const docRef = await addDoc(collection(db, "users", userId, "notes"), {
+      name: name.trim(),
+      type: "tracker",
+      rows: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    return docRef.id;
+  } catch (error) {
+    console.error("Error creating tracker:", error);
+    throw error;
+  }
+};
+
+// Update a tracker (renaming or modifying rows)
+export const updateTracker = async (userId, trackerId, updates) => {
+  if (!userId || !trackerId) throw new Error("Missing data");
+  try {
+    const ref = doc(db, "users", userId, "notes", trackerId);
+    await updateDoc(ref, {
+      ...updates,
+      updatedAt: Date.now(),
+    });
+  } catch (error) {
+    console.error("Error updating tracker:", error);
+    throw error;
+  }
+};
+
+// Delete a tracker
+export const deleteTracker = async (userId, trackerId) => {
+  if (!userId || !trackerId) throw new Error("Missing data");
+  try {
+    await deleteDoc(doc(db, "users", userId, "notes", trackerId));
+  } catch (error) {
+    console.error("Error deleting tracker:", error);
+    throw error;
+  }
 };

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { BubbleMenu, FloatingMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
@@ -85,7 +85,7 @@ export default function RichTextEditor({ value, onChange, placeholder, className
 
   // Keep content synced if it changes externally (like loading a draft)
   useEffect(() => {
-    if (editor && value !== editor.getHTML()) {
+    if (editor && value !== editor.getHTML() && !editor.isFocused) {
       editor.commands.setContent(value);
     }
   }, [value, editor]);
