@@ -1,0 +1,119 @@
+/**
+ * trackerUtils.js
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Shared constants, helpers, and pure functions used across tracker components.
+ */
+
+// ── Column defaults ────────────────────────────────────────────────────────
+
+export const COL_DEFAULTS = { 0: 300, 1: 250, 2: 120 };
+export const COL_MIN = 60;
+export const DEFAULT_HEADERS = ["Task Title", "Linked Note", "Completed"];
+export const DEFAULT_COLUMN_TYPES = { 0: "text", 1: "note", 2: "checkbox" };
+
+// ── Row normalizer ─────────────────────────────────────────────────────────
+
+/**
+ * Ensures a row has exactly `numHeaders` cells.
+ * Handles legacy rows that stored cells as separate fields.
+ */
+export const normalizeRow = (row, numHeaders) => {
+  let cells = row.cells || [];
+
+  // Legacy format migration
+  if (cells.length === 0) {
+    cells = [row.title || "", row.noteId || "", row.completed || false];
+  }
+
+  const padded = [...cells];
+  while (padded.length < numHeaders) padded.push("");
+  if (padded.length > numHeaders) padded.splice(numHeaders);
+
+  return { id: row.id, cells: padded };
+};
+
+// ── Column width getter ────────────────────────────────────────────────────
+
+export const getColWidth = (colWidths, c) =>
+  colWidths[c] ?? COL_DEFAULTS[c] ?? 160;
+
+// ── New row factory ────────────────────────────────────────────────────────
+
+/**
+ * Creates a blank row with cells initialized to the correct defaults
+ * for each column type.
+ */
+export const createEmptyRow = (numCols, getColType) => ({
+  id: Math.random().toString(36).slice(2, 9),
+  cells: Array(numCols)
+    .fill(null)
+    .map((_, i) => (getColType(i) === "checkbox" ? false : "")),
+});
+
+// ── Column type helper ─────────────────────────────────────────────────────
+
+export const resolveColType = (columnTypes, c) =>
+  columnTypes[c] ?? (c === 2 ? "checkbox" : c === 1 ? "note" : "text");
+
+// ── Paste parser ───────────────────────────────────────────────────────────
+
+/**
+ * Parses a tab-separated clipboard string (from Excel / Google Sheets)
+ * into an array of row objects, coercing values based on column types.
+ */
+export const parsePastedText = (text, existingHeaders, columnTypes, notes) => {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  if (!lines.length) return null;
+
+  let maxCols = existingHeaders.length;
+  const rawRows = lines.map((line) => {
+    const cols = line.split("\t");
+    if (cols.length > maxCols) maxCols = cols.length;
+    return cols;
+  });
+
+  // Extend headers if needed
+  const newHeaders = [...existingHeaders];
+  const newTypes = { ...columnTypes };
+  for (let i = existingHeaders.length; i < maxCols; i++) {
+    newHeaders.push(`Col ${i + 1}`);
+    newTypes[i] = "text";
+  }
+
+  const newRows = rawRows.map((cols) => {
+    const cells = Array(maxCols)
+      .fill("")
+      .map((_, i) => {
+        const raw = (cols[i] || "").trim();
+        const type = newTypes[i] || "text";
+
+        if (type === "checkbox") {
+          return ["yes", "y", "true", "x", "completed", "1", "✔", "✓"].includes(
+            raw.toLowerCase()
+          );
+        }
+        if (type === "note") {
+          if (!raw) return "";
+          const m = raw.match(/\/note\/([^/\s?#]+)/);
+          const slug = m ? m[1] : raw;
+          const match = notes.find(
+            (n) =>
+              n.slug === slug ||
+              n.title.toLowerCase() === slug.toLowerCase()
+          );
+          return match ? match.id : "";
+        }
+        return raw;
+      });
+    return { id: Math.random().toString(36).slice(2, 9), cells };
+  });
+
+  return { newHeaders, newTypes, newRows };
+};
+
+// ── URL renderer helper ────────────────────────────────────────────────────
+
+export const URL_REGEX = /(https?:\/\/[^\s]+)/g;
+
+export const hasUrls = (val) =>
+  typeof val === "string" && URL_REGEX.test(val);

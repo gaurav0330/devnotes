@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
+﻿import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   getUserNotes,
   getUserFolders,
@@ -38,17 +38,7 @@ import {
   Hash,
   FileText,
   Table,
-  Save,
-  X,
-  Sparkles,
-  ExternalLink,
-  Settings,
-  Type,
   Link as LinkIcon,
-  CheckSquare,
-  ArrowLeftToLine,
-  ArrowRightToLine,
-  ChevronDown,
 } from "lucide-react";
 
 const normalizeRow = (row, numHeaders) => {
