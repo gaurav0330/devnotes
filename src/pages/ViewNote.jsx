@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   getPublicNoteBySlug,
   getPrivateNoteBySlug,
@@ -177,6 +177,47 @@ export default function ViewNote() {
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState(null); // "pdf" | "md" | null
+
+  const contentRef = useRef(null);
+
+  useEffect(() => {
+    if (!note?.content || !contentRef.current) return;
+
+    const preElements = contentRef.current.querySelectorAll("pre");
+    preElements.forEach((pre) => {
+      if (pre.querySelector(".copy-code-btn")) return;
+
+      const button = document.createElement("button");
+      button.className = "copy-code-btn";
+      button.title = "Copy Code";
+      button.type = "button";
+      
+      const copySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
+      const checkSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check"><path d="M20 6 9 17l-5-5"/></svg>`;
+      
+      button.innerHTML = copySvg;
+      
+      button.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const codeElement = pre.querySelector("code");
+        const codeText = codeElement ? codeElement.innerText : pre.innerText;
+        
+        try {
+          await navigator.clipboard.writeText(codeText);
+          button.innerHTML = checkSvg;
+          button.classList.add("success");
+          setTimeout(() => {
+            button.innerHTML = copySvg;
+            button.classList.remove("success");
+          }, 2000);
+        } catch (err) {
+          console.error("Failed to copy text: ", err);
+        }
+      });
+
+      pre.appendChild(button);
+    });
+  }, [note?.content]);
 
   useEffect(() => {
     const loadNote = async () => {
@@ -369,9 +410,8 @@ export default function ViewNote() {
             )}
           </div>
 
-          {/* Content */}
           <div className="p-8 prose dark:prose-invert max-w-none">
-            <div dangerouslySetInnerHTML={{ __html: note.content }} />
+            <div ref={contentRef} dangerouslySetInnerHTML={{ __html: note.content }} />
           </div>
         </div>
       </div>
