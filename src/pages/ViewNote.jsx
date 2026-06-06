@@ -20,6 +20,9 @@ import {
   FileDown,
   FileText,
   Copy,
+  Clock,
+  AlignLeft,
+  ALargeSmall,
 } from "lucide-react";
 
 // ✅ Native print-based PDF export — works with all CSS color functions (oklab, oklch, etc.)
@@ -178,8 +181,68 @@ export default function ViewNote() {
   const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState(null); // "pdf" | "md" | null
 
-  const contentRef = useRef(null);
+  // Scroll depth and statistics states
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [stats, setStats] = useState({ words: 0, time: 0 });
 
+  // Custom typography states (persisted in localStorage)
+  const [fontStyle, setFontStyle] = useState(() => localStorage.getItem("reader_font_style") || "sans");
+  const [fontSize, setFontSize] = useState(() => localStorage.getItem("reader_font_size") || "base");
+  const [showSettings, setShowSettings] = useState(false);
+
+  const contentRef = useRef(null);
+  const settingsRef = useRef(null);
+
+  // Close typography settings when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target)) {
+        setShowSettings(false);
+      }
+    };
+    if (showSettings) {
+      document.addEventListener("mousedown", handleOutsideClick);
+    }
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [showSettings]);
+
+  // Persist typography choices
+  useEffect(() => {
+    localStorage.setItem("reader_font_style", fontStyle);
+  }, [fontStyle]);
+
+  useEffect(() => {
+    localStorage.setItem("reader_font_size", fontSize);
+  }, [fontSize]);
+
+  // Calculate scroll reading depth
+  useEffect(() => {
+    const handleScroll = () => {
+      const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+      if (totalHeight > 0) {
+        const progress = (window.scrollY / totalHeight) * 100;
+        setScrollProgress(progress);
+      } else {
+        setScrollProgress(0);
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Compute word count & reading time stats
+  useEffect(() => {
+    if (!note?.content) return;
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = note.content;
+    const text = tempDiv.textContent || tempDiv.innerText || "";
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    const time = Math.max(1, Math.round(words / 200));
+    setStats({ words, time });
+  }, [note?.content]);
+
+  // Handle syntax-highlighting code blocks and inject copy code buttons
   useEffect(() => {
     if (!note?.content || !contentRef.current) return;
 
@@ -219,6 +282,7 @@ export default function ViewNote() {
     });
   }, [note?.content]);
 
+  // Load Note content
   useEffect(() => {
     const loadNote = async () => {
       try {
@@ -314,60 +378,166 @@ export default function ViewNote() {
         </div>
         <h2 className="text-2xl font-bold">Note Not Found</h2>
         <p className="text-muted-foreground">This note doesn't exist or you don't have access.</p>
-        <Button onClick={() => navigate("/")}>
+        <Button onClick={() => navigate("/")} className="hover:scale-[1.02] active:scale-[0.98] transition-all">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back Home
         </Button>
       </div>
     );
   }
 
+  // Map user selections to classes
+  const fontClass = 
+    fontStyle === "sans" 
+      ? "font-sans" 
+      : fontStyle === "serif" 
+      ? "font-serif" 
+      : "font-mono";
+
+  const sizeClass = 
+    fontSize === "sm" 
+      ? "prose-sm" 
+      : fontSize === "base" 
+      ? "prose-base" 
+      : "prose-lg";
+
   return (
-    <div className="min-h-[calc(100vh-4rem)] animate-page-in">
+    <div className="min-h-[calc(100vh-4rem)] animate-page-in relative">
+      {/* Scroll reading progress bar */}
+      <div 
+        className="fixed top-16 left-0 h-1 bg-gradient-to-r from-primary via-purple-500 to-indigo-500 transition-all duration-100 ease-out z-[9998]"
+        style={{ width: `${scrollProgress}%` }}
+      />
+
       <div className="max-w-4xl mx-auto p-6">
-        {/* Top bar */}
-        <div className="flex justify-between items-center mb-8">
-          <Button variant="ghost" onClick={() => navigate("/")}>
+        {/* Top Actions Bar */}
+        <div className="flex justify-between items-center mb-8 gap-4 flex-wrap">
+          <Button 
+            variant="ghost" 
+            onClick={() => navigate("/")} 
+            className="hover:scale-[1.02] active:scale-[0.98] transition-all shrink-0"
+          >
             <ArrowLeft className="h-4 w-4 mr-2" /> Back
           </Button>
 
-          <div className="flex gap-2 flex-wrap justify-end">
-            {/* Export buttons — available to everyone */}
+          <div className="flex gap-2 flex-wrap items-center justify-end">
+            {/* Typography & Reader Settings */}
+            <div ref={settingsRef} className="relative">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowSettings(!showSettings)}
+                className={`gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all ${
+                  showSettings ? "bg-primary/10 text-primary border-primary/40 shadow-sm" : ""
+                }`}
+                title="Reader Settings"
+              >
+                <ALargeSmall className="h-4 w-4" />
+                <span className="hidden sm:inline">Settings</span>
+              </Button>
+              
+              {showSettings && (
+                <div className="absolute right-0 top-full mt-2 w-56 p-4 rounded-2xl border border-border/50 bg-card/95 backdrop-blur-md shadow-xl z-50 animate-scale-in">
+                  <div className="space-y-4">
+                    {/* Font Style */}
+                    <div>
+                      <label className="text-[10px] uppercase tracking-wider font-extrabold text-muted-foreground block mb-2 select-none">Font Style</label>
+                      <div className="grid grid-cols-3 gap-1 bg-muted/50 p-0.5 rounded-lg border border-border/10">
+                        {["sans", "serif", "mono"].map((style) => (
+                          <button
+                            key={style}
+                            onClick={() => setFontStyle(style)}
+                            className={`py-1 text-xs font-semibold rounded capitalize transition-all cursor-pointer ${
+                              fontStyle === style
+                                ? "bg-card text-foreground shadow-sm font-bold"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {style}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Font Size */}
+                    <div>
+                      <label className="text-[10px] uppercase tracking-wider font-extrabold text-muted-foreground block mb-2 select-none">Font Size</label>
+                      <div className="grid grid-cols-3 gap-1 bg-muted/50 p-0.5 rounded-lg border border-border/10">
+                        {["sm", "base", "lg"].map((size) => (
+                          <button
+                            key={size}
+                            onClick={() => setFontSize(size)}
+                            className={`py-1 text-xs font-semibold rounded uppercase transition-all cursor-pointer ${
+                              fontSize === size
+                                ? "bg-card text-foreground shadow-sm font-bold"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {size}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Export PDF */}
             <Button
               size="sm"
               variant="outline"
               disabled={exporting === "pdf"}
               onClick={handleExportPDF}
-              className="gap-2"
+              className="gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
             >
               <FileDown className="h-4 w-4" />
-              {exporting === "pdf" ? "Exporting…" : "PDF"}
+              <span>{exporting === "pdf" ? "Exporting…" : "PDF"}</span>
             </Button>
 
+            {/* Export Markdown */}
             <Button
               size="sm"
               variant="outline"
               disabled={exporting === "md"}
               onClick={handleExportMD}
-              className="gap-2"
+              className="gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
             >
               <FileText className="h-4 w-4" />
-              {exporting === "md" ? "Exporting…" : "Markdown"}
+              <span>{exporting === "md" ? "Exporting…" : "Markdown"}</span>
             </Button>
 
-            {/* Share link */}
-            <Button size="sm" variant="outline" onClick={copyLink} className="gap-2">
-              {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-              {copied ? "Copied!" : "Copy Link"}
+            {/* Copy Link */}
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={copyLink} 
+              className={`gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all ${
+                copied ? "border-emerald-500/50 text-emerald-500 bg-emerald-500/5 hover:bg-emerald-500/5" : ""
+              }`}
+            >
+              {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+              <span>{copied ? "Copied!" : "Share Link"}</span>
             </Button>
 
             {isOwner && (
               <>
-                <Button variant="outline" size="sm" onClick={() => navigate(`/edit/${slug}`)} className="gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => navigate(`/edit/${slug}`)} 
+                  className="gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                >
                   <Edit className="h-4 w-4" /> Edit
                 </Button>
-                <Button variant="destructive" size="sm" disabled={deleting} onClick={handleDelete} className="gap-2">
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  disabled={deleting} 
+                  onClick={handleDelete} 
+                  className="gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                >
                   <Trash2 className="h-4 w-4" />
-                  {deleting ? "Deleting…" : "Delete"}
+                  <span>{deleting ? "Deleting…" : "Delete"}</span>
                 </Button>
               </>
             )}
@@ -375,34 +545,58 @@ export default function ViewNote() {
         </div>
 
         {/* Note Card */}
-        <div className="border border-border/50 rounded-3xl overflow-hidden bg-card shadow-xl shadow-black/5">
-          {/* Header */}
-          <div className="p-8 border-b border-border/50 bg-gradient-to-br from-primary/5 to-transparent">
-            <h1 className="text-3xl sm:text-4xl font-black tracking-tight mb-5">{note.title}</h1>
-
-            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-1.5">
-                <Calendar className="h-4 w-4" />
-                {formatDate(note.createdAt)}
-              </div>
-
+        <div className="border border-border/40 rounded-3xl overflow-hidden bg-card shadow-premium hover:shadow-neon/5 hover:border-primary/20 transition-all duration-300">
+          
+          {/* Card Header Section */}
+          <div className="p-8 border-b border-border/50 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5">
+            
+            {/* Visibility Badge */}
+            <div className="mb-4">
               {note.visibility === "public" ? (
-                <div className="flex items-center gap-1.5 text-green-500 font-medium">
-                  <Globe className="h-4 w-4" /> Public
-                </div>
+                <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 shadow-[0_2px_10px_rgba(16,185,129,0.02)] select-none">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                  Public Note
+                </span>
               ) : (
-                <div className="flex items-center gap-1.5">
-                  <Lock className="h-4 w-4" /> Private
-                </div>
+                <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/20 shadow-[0_2px_10px_rgba(245,158,11,0.02)] select-none">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
+                  Private Note
+                </span>
               )}
             </div>
 
-            {/* Tags */}
+            {/* Note Title */}
+            <h1 className="text-3xl sm:text-5xl font-black tracking-tight mb-6 leading-tight select-all">
+              {note.title}
+            </h1>
+
+            {/* Note Metadata Details */}
+            <div className="flex flex-wrap gap-x-5 gap-y-2.5 text-xs text-muted-foreground/80 font-medium">
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-4 w-4 text-muted-foreground/60" />
+                <span>Created {formatDate(note.createdAt)}</span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <Clock className="h-4 w-4 text-muted-foreground/60" />
+                <span>{stats.time} {stats.time === 1 ? "min" : "mins"} read</span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <AlignLeft className="h-4 w-4 text-muted-foreground/60" />
+                <span>{stats.words.toLocaleString()} words</span>
+              </div>
+            </div>
+
+            {/* Note Tags list */}
             {note.tags?.length > 0 && (
-              <div className="flex gap-2 mt-5 flex-wrap items-center">
-                <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+              <div className="flex gap-2 mt-6 flex-wrap items-center">
                 {note.tags.map((t, i) => (
-                  <span key={i} className="px-2.5 py-0.5 rounded-lg text-xs font-bold bg-primary/10 text-primary border border-primary/20">
+                  <span 
+                    key={i} 
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-primary/5 text-primary border border-primary/20 hover:bg-primary/10 hover:border-primary/30 transition-all cursor-default select-none hover:scale-[1.02]"
+                  >
+                    <Tag className="h-3 w-3 opacity-60" />
                     {t}
                   </span>
                 ))}
@@ -410,7 +604,8 @@ export default function ViewNote() {
             )}
           </div>
 
-          <div className="p-8 prose dark:prose-invert max-w-none">
+          {/* Card Body - Content */}
+          <div className={`p-8 md:p-12 prose dark:prose-invert max-w-none ${fontClass} ${sizeClass} transition-all duration-200`}>
             <div ref={contentRef} dangerouslySetInnerHTML={{ __html: note.content }} />
           </div>
         </div>
