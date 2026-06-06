@@ -126,7 +126,7 @@ const Toolbar = ({ editor }) => {
   ];
 
   return (
-    <div className="sticky top-0 z-10 flex flex-wrap items-center gap-0.5 border-b border-border/50 bg-card/80 backdrop-blur-md px-2 py-1.5 rounded-t-xl">
+    <div className="sticky top-16 z-10 flex flex-wrap items-center gap-0.5 border-b border-border/50 bg-card/80 backdrop-blur-md px-2 py-1.5 rounded-t-xl">
       {groups.map((group, gi) => (
         <span key={gi} className="contents">
           {group.map((btn, bi) => (
@@ -260,6 +260,32 @@ export default function RichTextEditor({
         class: 'prose prose-slate dark:prose-invert max-w-none focus:outline-none px-6 py-5',
         style: `min-height: ${minHeight}px`,
       },
+      transformPastedHTML(html) {
+        // Clean up styling and classes from pasted content to keep standard formatting only
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        doc.querySelectorAll('*').forEach((el) => {
+          // Keep only essential structural attributes
+          const keepAttrs = ['href', 'src', 'target', 'colspan', 'rowspan', 'checked', 'disabled'];
+          
+          // Check for code blocks or inline code to preserve language classes
+          const isCode = el.tagName === 'CODE' || el.tagName === 'PRE';
+          const classList = Array.from(el.classList);
+          const hasLanguageClass = classList.some(c => c.startsWith('language-'));
+
+          Array.from(el.attributes).forEach((attr) => {
+            if (attr.name === 'class' && isCode && hasLanguageClass) {
+              const langClass = classList.find(c => c.startsWith('language-'));
+              el.setAttribute('class', langClass);
+            } else if (!keepAttrs.includes(attr.name)) {
+              el.removeAttribute(attr.name);
+            }
+          });
+        });
+
+        return doc.body.innerHTML;
+      },
     },
   });
 
@@ -275,7 +301,6 @@ export default function RichTextEditor({
       className={[
         'flex flex-col rounded-xl border border-border/50 bg-card/30 backdrop-blur-sm shadow-inner',
         'transition-all focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/50',
-        'overflow-hidden',
         className,
       ].join(' ')}
     >
