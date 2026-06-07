@@ -114,6 +114,52 @@ export default function Home() {
     return saved !== null ? JSON.parse(saved) : true;
   });
 
+  // Sidebar width states & grab-resize logic
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem("sidebar_width_pref");
+    return saved ? parseInt(saved, 10) : 288;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const [draggingFolderId, setDraggingFolderId] = useState(null);
+  const [dragOverTargetFolderId, setDragOverTargetFolderId] = useState(null);
+
+  const sidebarWidthRef = useRef(sidebarWidth);
+
+  useEffect(() => {
+    sidebarWidthRef.current = sidebarWidth;
+  }, [sidebarWidth]);
+
+  const startResize = useCallback((e) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e) => {
+      const newWidth = Math.max(220, Math.min(480, e.clientX));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      localStorage.setItem("sidebar_width_pref", sidebarWidthRef.current.toString());
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [isResizing]);
+
   // Pinned collections states
   const [pinnedFolders, setPinnedFolders] = useState(() => {
     if (!user) return [];
@@ -626,6 +672,25 @@ export default function Home() {
     }
   }, [user, sortedFolders]);
 
+  const reorderFolders = useCallback((draggedId, targetId) => {
+    if (draggedId === targetId) return;
+
+    const currentSortedIds = sortedFolders.map(f => f.id);
+    const draggedIdx = currentSortedIds.indexOf(draggedId);
+    const targetIdx = currentSortedIds.indexOf(targetId);
+    
+    if (draggedIdx === -1 || targetIdx === -1) return;
+
+    const newOrder = [...currentSortedIds];
+    newOrder.splice(draggedIdx, 1);
+    newOrder.splice(targetIdx, 0, draggedId);
+
+    setFolderOrder(newOrder);
+    if (user) {
+      localStorage.setItem(`folder_order_${user.uid}`, JSON.stringify(newOrder));
+    }
+  }, [user, sortedFolders]);
+
   // Renaming folder logic
   const handleRenameFolder = useCallback(async (folderId) => {
     const newName = editingFolderName.trim();
@@ -654,7 +719,15 @@ export default function Home() {
   
   return (
       <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-background">
-        <aside className="hidden md:flex w-72 border-r border-border/50 p-6 flex-col gap-8 bg-indigo-50/50 dark:bg-indigo-950/20 h-full overflow-y-auto scrollbar-thin shrink-0">
+        <aside 
+          style={{
+            width: sidebarOpen ? `${sidebarWidth}px` : "0px"
+          }}
+          className={`
+            hidden md:flex border-r border-border/50 p-6 flex-col gap-8 bg-indigo-50/50 dark:bg-indigo-950/20 h-full overflow-y-auto scrollbar-thin shrink-0 transition-all duration-300 ease-in-out
+            ${sidebarOpen ? "" : "w-0 p-0 border-none overflow-hidden"}
+          `}
+        >
           <div className="h-4 w-24 bg-muted animate-pulse rounded" />
           <div className="space-y-4">
             {[1, 2, 3, 4].map(i => (
@@ -684,10 +757,13 @@ export default function Home() {
       {/* Sidebar open/collapse floating toggle handle */}
       <button
         onClick={toggleSidebar}
+        style={{
+          left: sidebarOpen ? `${sidebarWidth}px` : "0px"
+        }}
         className={`
-          fixed z-50 p-1.5 rounded-r-lg border border-l-0 border-border/50 bg-card hover:text-primary transition-all duration-300 shadow-sm hover:shadow cursor-pointer
+          fixed z-50 p-1.5 rounded-r-lg border border-l-0 border-border/50 bg-card hover:text-primary shadow-sm hover:shadow cursor-pointer
           top-[76px]
-          ${sidebarOpen ? "left-[288px]" : "left-0"}
+          ${isResizing ? "transition-none" : "transition-all duration-300 ease-in-out"}
         `}
         title={sidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
       >
@@ -700,13 +776,17 @@ export default function Home() {
 
       {/* SIDEBAR */}
       <aside 
+        style={{
+          width: sidebarOpen ? `${sidebarWidth}px` : "0px"
+        }}
         className={`
           fixed md:static inset-y-0 left-0 z-40 
           flex flex-col gap-8 
           bg-indigo-50/50 dark:bg-indigo-950/20 
           h-full overflow-y-auto scrollbar-thin shrink-0
-          transition-all duration-300 ease-in-out
-          ${sidebarOpen ? "w-72 p-6 border-r border-border/50" : "w-0 p-0 border-none overflow-hidden"}
+          relative
+          ${isResizing ? "transition-none" : "transition-all duration-300 ease-in-out"}
+          ${sidebarOpen ? "p-6 border-r border-border/50" : "w-0 p-0 border-none overflow-hidden"}
         `}
       >
         <div className="relative">
@@ -814,13 +894,13 @@ export default function Home() {
                 setActiveFolder("all");
                 setActiveTrackerId(null);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[15px] font-semibold transition-all ${
                 activeFolder === "all" && !activeTrackerId
                   ? "bg-primary/10 text-primary"
                   : "text-muted-foreground hover:bg-muted"
               }`}
             >
-              <LayoutGrid className="h-4 w-4" />
+              <LayoutGrid className="h-[17px] w-[17px] shrink-0" />
               All Notes
               <span className="ml-auto text-xs opacity-60">
                 {noteCount("all")}
@@ -832,13 +912,13 @@ export default function Home() {
                 setActiveFolder("unfiled");
                 setActiveTrackerId(null);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[15px] font-semibold transition-all ${
                 activeFolder === "unfiled" && !activeTrackerId
                   ? "bg-primary/10 text-primary"
                   : "text-muted-foreground hover:bg-muted"
               }`}
             >
-              <Folder className="h-4 w-4" />
+              <Folder className="h-[17px] w-[17px] shrink-0" />
               Unfiled
               <span className="ml-auto text-xs opacity-60">
                 {noteCount("unfiled")}
@@ -871,125 +951,161 @@ export default function Home() {
 
             {filteredFolders.map((folder, fi) => {
               const isEditing = editingFolderId === folder.id;
+              const isPinned = pinnedFolders.includes(folder.id);
               
+              // Separator logic: show divider if current folder is unpinned but previous was pinned
+              const showSeparator = fi > 0 && !isPinned && pinnedFolders.includes(filteredFolders[fi - 1].id);
+
               return (
-                <div
-                  key={folder.id}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDragEnter={() => setDragOverFolder(folder.id)}
-                  onDragLeave={() => setDragOverFolder(null)}
-                  onDrop={() => handleDrop(folder.id)}
-                  style={{ animationDelay: `${fi * 60}ms` }}
-                  className={`group animate-sidebar-in flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all ${
-                    activeFolder === folder.id && !activeTrackerId
-                      ? "bg-primary/10 text-primary"
-                      : dragOverFolder === folder.id
-                      ? "bg-primary/5 ring-1 ring-primary/20"
-                      : "text-muted-foreground hover:bg-muted"
-                  }`}
-                  onClick={() => {
-                    if (!isEditing) {
-                      setActiveFolder(folder.id);
-                      setActiveTrackerId(null);
-                    }
-                  }}
-                >
-                  <div className={`h-2 w-2 rounded-full shrink-0 ${folderColor(folder.name)}`} />
-                  
-                  {isEditing ? (
-                    <input
-                      autoFocus
-                      type="text"
-                      value={editingFolderName}
-                      onChange={(e) => setEditingFolderName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleRenameFolder(folder.id);
-                        if (e.key === "Escape") {
-                          setEditingFolderId(null);
-                          setEditingFolderName("");
-                        }
-                      }}
-                      onBlur={() => handleRenameFolder(folder.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex-1 bg-background border border-border/85 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary text-foreground"
-                    />
-                  ) : (
-                    <>
-                      <span className="truncate flex-1">{folder.name}</span>
-                      
-                      <span className="text-xs opacity-60 group-hover:hidden">
-                        {noteCount(folder.id)}
-                      </span>
-
-                      {/* Manual Reordering (Chevrons) - Only active in custom sort mode */}
-                      {folderSort === "custom" && (
-                        <div className="hidden group-hover:flex items-center gap-0.5 text-muted-foreground/80">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              moveFolder(folder.id, "up");
-                            }}
-                            className="p-0.5 hover:bg-muted-foreground/15 hover:text-foreground rounded transition-colors"
-                            title="Move Up"
-                          >
-                            <ChevronUp className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              moveFolder(folder.id, "down");
-                            }}
-                            className="p-0.5 hover:bg-muted-foreground/15 hover:text-foreground rounded transition-colors"
-                            title="Move Down"
-                          >
-                            <ChevronDown className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Pin Folder */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          togglePinFolder(folder.id);
-                        }}
-                        className={`p-1 rounded transition-colors cursor-pointer ${
-                          pinnedFolders.includes(folder.id)
-                            ? "flex text-primary bg-primary/10 hover:bg-primary/20"
-                            : "hidden group-hover:flex text-muted-foreground hover:bg-muted hover:text-foreground"
-                        }`}
-                        title={pinnedFolders.includes(folder.id) ? "Unpin Folder" : "Pin Folder"}
-                      >
-                        <Pin className={`h-3 w-3 ${pinnedFolders.includes(folder.id) ? "fill-primary" : "rotate-45"}`} />
-                      </button>
-
-                      {/* Rename Folder (Edit) */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingFolderId(folder.id);
-                          setEditingFolderName(folder.name);
-                        }}
-                        className="hidden group-hover:flex p-1 hover:bg-muted rounded text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-                        title="Rename Folder"
-                      >
-                        <Edit className="h-3 w-3" />
-                      </button>
-
-                      {/* Delete Folder */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteFolder(folder.id, folder.name);
-                        }}
-                        className="hidden group-hover:flex p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-colors cursor-pointer"
-                        title="Delete Folder"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </>
+                <React.Fragment key={folder.id}>
+                  {showSeparator && (
+                    <div className="py-2 flex items-center gap-2 select-none px-2">
+                      <div className="flex-1 border-t border-border/20" />
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-muted-foreground/45 shrink-0">Other Collections</span>
+                      <div className="flex-1 border-t border-border/20" />
+                    </div>
                   )}
-                </div>
+                  <div
+                    draggable={folderSort === "custom"}
+                    onDragStart={(e) => {
+                      e.dataTransfer.effectAllowed = "move";
+                      setDraggingFolderId(folder.id);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (draggingFolderId && draggingFolderId !== folder.id) {
+                        setDragOverTargetFolderId(folder.id);
+                      }
+                    }}
+                    onDragLeave={() => {
+                      setDragOverTargetFolderId(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (draggingFolderId) {
+                        reorderFolders(draggingFolderId, folder.id);
+                        setDraggingFolderId(null);
+                        setDragOverTargetFolderId(null);
+                      } else {
+                        handleDrop(folder.id);
+                      }
+                    }}
+                    onDragEnd={() => {
+                      setDraggingFolderId(null);
+                      setDragOverTargetFolderId(null);
+                    }}
+                    style={{ animationDelay: `${fi * 60}ms` }}
+                    className={`group animate-sidebar-in flex items-center gap-2 px-3 py-2 rounded-lg text-[15px] font-semibold cursor-pointer transition-all ${
+                      activeFolder === folder.id && !activeTrackerId
+                        ? "bg-primary/10 text-primary"
+                        : dragOverFolder === folder.id || dragOverTargetFolderId === folder.id
+                        ? "bg-primary/5 ring-1 ring-primary/30 scale-[1.01]"
+                        : "text-muted-foreground hover:bg-muted"
+                    } ${draggingFolderId === folder.id ? "opacity-40" : ""}`}
+                    onClick={() => {
+                      if (!isEditing) {
+                        setActiveFolder(folder.id);
+                        setActiveTrackerId(null);
+                      }
+                    }}
+                  >
+                    <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${folderColor(folder.name)}`} />
+                    
+                    {isEditing ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        value={editingFolderName}
+                        onChange={(e) => setEditingFolderName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleRenameFolder(folder.id);
+                          if (e.key === "Escape") {
+                            setEditingFolderId(null);
+                            setEditingFolderName("");
+                          }
+                        }}
+                        onBlur={() => handleRenameFolder(folder.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex-1 bg-background border border-border/85 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary text-foreground"
+                      />
+                    ) : (
+                      <>
+                        <span className="truncate flex-1">{folder.name}</span>
+                        
+                        <span className="text-xs opacity-60 group-hover:hidden">
+                          {noteCount(folder.id)}
+                        </span>
+
+                        {/* Manual Reordering (Chevrons) - Only active in custom sort mode */}
+                        {folderSort === "custom" && (
+                          <div className="hidden group-hover:flex items-center gap-0.5 text-muted-foreground/80">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                moveFolder(folder.id, "up");
+                              }}
+                              className="p-0.5 hover:bg-muted-foreground/15 hover:text-foreground rounded transition-colors"
+                              title="Move Up"
+                            >
+                              <ChevronUp className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                moveFolder(folder.id, "down");
+                              }}
+                              className="p-0.5 hover:bg-muted-foreground/15 hover:text-foreground rounded transition-colors"
+                              title="Move Down"
+                            >
+                              <ChevronDown className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Pin Folder */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            togglePinFolder(folder.id);
+                          }}
+                          className={`p-1 rounded transition-colors cursor-pointer ${
+                            pinnedFolders.includes(folder.id)
+                              ? "flex text-primary bg-primary/10 hover:bg-primary/20"
+                              : "hidden group-hover:flex text-muted-foreground hover:bg-muted hover:text-foreground"
+                          }`}
+                          title={pinnedFolders.includes(folder.id) ? "Unpin Folder" : "Pin Folder"}
+                        >
+                          <Pin className={`h-3 w-3 ${pinnedFolders.includes(folder.id) ? "fill-primary" : "rotate-45"}`} />
+                        </button>
+
+                        {/* Rename Folder (Edit) */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingFolderId(folder.id);
+                            setEditingFolderName(folder.name);
+                          }}
+                          className="hidden group-hover:flex p-1 hover:bg-muted rounded text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                          title="Rename Folder"
+                        >
+                          <Edit className="h-3 w-3" />
+                        </button>
+
+                        {/* Delete Folder */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteFolder(folder.id, folder.name);
+                          }}
+                          className="hidden group-hover:flex p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-colors cursor-pointer"
+                          title="Delete Folder"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </React.Fragment>
               );
             })}
 
@@ -998,13 +1114,13 @@ export default function Home() {
                 setActiveFolder("trash");
                 setActiveTrackerId(null);
               }}
-              className={`w-full mt-4 flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`w-full mt-4 flex items-center gap-3 px-3 py-2 rounded-lg text-[15px] font-semibold transition-all ${
                 activeFolder === "trash" && !activeTrackerId
                   ? "bg-red-500/10 text-red-500"
                   : "text-muted-foreground hover:bg-muted"
               }`}
             >
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="h-[17px] w-[17px] shrink-0" />
               Trash
             </button>
           </div>
@@ -1049,56 +1165,65 @@ export default function Home() {
 
               {filteredTrackers.map((tracker, ti) => {
                 const isPinned = pinnedTrackers.includes(tracker.id);
+                const showSeparator = ti > 0 && !isPinned && pinnedTrackers.includes(filteredTrackers[ti - 1].id);
                 
                 return (
-                  <div
-                    key={tracker.id}
-                    style={{ animationDelay: `${ti * 60}ms` }}
-                    className={`group animate-sidebar-in flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all ${
-                      activeTrackerId === tracker.id
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted"
-                    }`}
-                    onClick={() => {
-                      setActiveTrackerId(tracker.id);
-                      setActiveFolder(null);
-                    }}
-                  >
-                    <Table className="h-4 w-4 text-primary opacity-80 shrink-0" />
-                    <span className="truncate flex-1">{tracker.name}</span>
-                    
-                    <span className="text-xs opacity-60 group-hover:hidden">
-                      {tracker.rows?.length || 0}
-                    </span>
-
-                    {/* Pin Tracker */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        togglePinTracker(tracker.id);
-                      }}
-                      className={`p-1 rounded transition-colors cursor-pointer ${
-                        isPinned
-                          ? "flex text-primary bg-primary/10 hover:bg-primary/20"
-                          : "hidden group-hover:flex text-muted-foreground hover:bg-muted hover:text-foreground"
+                  <React.Fragment key={tracker.id}>
+                    {showSeparator && (
+                      <div className="py-2 flex items-center gap-2 select-none px-2">
+                        <div className="flex-1 border-t border-border/20" />
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest text-muted-foreground/45 shrink-0">Other Trackers</span>
+                        <div className="flex-1 border-t border-border/20" />
+                      </div>
+                    )}
+                    <div
+                      style={{ animationDelay: `${ti * 60}ms` }}
+                      className={`group animate-sidebar-in flex items-center gap-2 px-3 py-2 rounded-lg text-[15px] font-semibold cursor-pointer transition-all ${
+                        activeTrackerId === tracker.id
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-muted"
                       }`}
-                      title={isPinned ? "Unpin Tracker" : "Pin Tracker"}
-                    >
-                      <Pin className={`h-3 w-3 ${isPinned ? "fill-primary" : "rotate-45"}`} />
-                    </button>
-
-                    {/* Delete Tracker */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteTracker(tracker.id, tracker.name);
+                      onClick={() => {
+                        setActiveTrackerId(tracker.id);
+                        setActiveFolder(null);
                       }}
-                      className="hidden group-hover:flex p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-colors cursor-pointer"
-                      title="Delete Tracker"
                     >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
+                      <Table className="h-[17px] w-[17px] text-primary opacity-80 shrink-0" />
+                      <span className="truncate flex-1">{tracker.name}</span>
+                      
+                      <span className="text-xs opacity-60 group-hover:hidden">
+                        {tracker.rows?.length || 0}
+                      </span>
+
+                      {/* Pin Tracker */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          togglePinTracker(tracker.id);
+                        }}
+                        className={`p-1 rounded transition-colors cursor-pointer ${
+                          isPinned
+                            ? "flex text-primary bg-primary/10 hover:bg-primary/20"
+                            : "hidden group-hover:flex text-muted-foreground hover:bg-muted hover:text-foreground"
+                        }`}
+                        title={isPinned ? "Unpin Tracker" : "Pin Tracker"}
+                      >
+                        <Pin className={`h-3 w-3 ${isPinned ? "fill-primary" : "rotate-45"}`} />
+                      </button>
+
+                      {/* Delete Tracker */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteTracker(tracker.id, tracker.name);
+                        }}
+                        className="hidden group-hover:flex p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-colors cursor-pointer"
+                        title="Delete Tracker"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </React.Fragment>
                 );
               })}
             </div>
@@ -1128,6 +1253,18 @@ export default function Home() {
           </div>
         </div>
       </aside>
+
+      {/* Resize Handle */}
+      {sidebarOpen && (
+        <div
+          onMouseDown={startResize}
+          style={{
+            left: `${sidebarWidth - 3}px`
+          }}
+          className="hidden md:block absolute top-0 w-1.5 h-full cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors z-50"
+          title="Drag to resize sidebar"
+        />
+      )}
 
       {/* MAIN */}
       <main className={`flex-1 ${activeTrackerId ? "p-6 md:p-8 overflow-hidden flex flex-col" : "p-8 md:p-12 overflow-y-auto"} max-w-6xl mx-auto w-full animate-page-in`}>
