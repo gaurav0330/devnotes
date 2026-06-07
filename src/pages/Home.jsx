@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   getUserNotes,
   getUserFolders,
@@ -12,6 +12,7 @@ import {
   updateTracker,
   deleteTracker,
   createNote,
+  updateFolder,
 } from "@/lib/notes.service";
 import { useAuth } from "@/context/AuthContext";
 import { Link, useNavigate } from "react-router-dom";
@@ -34,11 +35,16 @@ import {
   Clock,
   MoreVertical,
   ChevronRight,
+  ChevronLeft,
   LayoutGrid,
   Hash,
   FileText,
   Table,
   Link as LinkIcon,
+  ChevronUp,
+  ChevronDown,
+  SlidersHorizontal,
+  Edit,
 } from "lucide-react";
 
 const normalizeRow = (row, numHeaders) => {
@@ -85,6 +91,132 @@ export default function Home() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sort, setSort] = useState("latest");
   const [visibleCount, setVisibleCount] = useState(12);
+
+  // Folder reordering, display sorting, filtering, and renaming states
+  const [folderOrder, setFolderOrder] = useState(() => {
+    if (!user) return [];
+    try {
+      const saved = localStorage.getItem(`folder_order_${user.uid}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [folderSort, setFolderSort] = useState(() => localStorage.getItem("folder_sort_pref") || "custom"); // "custom" | "alphabetical" | "count"
+  const [folderFilter, setFolderFilter] = useState(() => localStorage.getItem("folder_filter_pref") || "all"); // "all" | "active"
+  const [showFolderOptions, setShowFolderOptions] = useState(false);
+  const [editingFolderId, setEditingFolderId] = useState(null);
+  const [editingFolderName, setEditingFolderName] = useState("");
+
+  // Sidebar open/collapse state (persisted in localStorage)
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    const saved = localStorage.getItem("sidebar_open_pref");
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+
+  // Pinned collections states
+  const [pinnedFolders, setPinnedFolders] = useState(() => {
+    if (!user) return [];
+    try {
+      const saved = localStorage.getItem(`pinned_folders_${user.uid}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [pinnedTrackers, setPinnedTrackers] = useState(() => {
+    if (!user) return [];
+    try {
+      const saved = localStorage.getItem(`pinned_trackers_${user.uid}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const folderOptionsRef = useRef(null);
+
+  // Toggle sidebar action
+  const toggleSidebar = useCallback(() => {
+    setSidebarOpen(prev => {
+      const newVal = !prev;
+      localStorage.setItem("sidebar_open_pref", JSON.stringify(newVal));
+      return newVal;
+    });
+  }, []);
+
+  // Toggle pin folder action
+  const togglePinFolder = useCallback((folderId) => {
+    setPinnedFolders(prev => {
+      const updated = prev.includes(folderId)
+        ? prev.filter(id => id !== folderId)
+        : [...prev, folderId];
+      if (user) {
+        localStorage.setItem(`pinned_folders_${user.uid}`, JSON.stringify(updated));
+      }
+      return updated;
+    });
+  }, [user]);
+
+  // Toggle pin tracker action
+  const togglePinTracker = useCallback((trackerId) => {
+    setPinnedTrackers(prev => {
+      const updated = prev.includes(trackerId)
+        ? prev.filter(id => id !== trackerId)
+        : [...prev, trackerId];
+      if (user) {
+        localStorage.setItem(`pinned_trackers_${user.uid}`, JSON.stringify(updated));
+      }
+      return updated;
+    });
+  }, [user]);
+
+  // Sync pinned states on login changes
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const savedF = localStorage.getItem(`pinned_folders_${user.uid}`);
+      setPinnedFolders(savedF ? JSON.parse(savedF) : []);
+      const savedT = localStorage.getItem(`pinned_trackers_${user.uid}`);
+      setPinnedTrackers(savedT ? JSON.parse(savedT) : []);
+    } catch {
+      setPinnedFolders([]);
+      setPinnedTrackers([]);
+    }
+  }, [user]);
+
+  // Sync folder order with user changes
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const saved = localStorage.getItem(`folder_order_${user.uid}`);
+      setFolderOrder(saved ? JSON.parse(saved) : []);
+    } catch {
+      setFolderOrder([]);
+    }
+  }, [user]);
+
+  // Persist folder view preferences
+  useEffect(() => {
+    localStorage.setItem("folder_sort_pref", folderSort);
+  }, [folderSort]);
+
+  useEffect(() => {
+    localStorage.setItem("folder_filter_pref", folderFilter);
+  }, [folderFilter]);
+
+  // Close folder display options dropdown when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (folderOptionsRef.current && !folderOptionsRef.current.contains(e.target)) {
+        setShowFolderOptions(false);
+      }
+    };
+    if (showFolderOptions) {
+      document.addEventListener("mousedown", handleOutsideClick);
+    }
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [showFolderOptions]);
     const observer = useRef(null);
   const observerTarget = useCallback(node => {
     if (loading) return;
@@ -149,14 +281,14 @@ export default function Home() {
     return div.textContent || "";
   };
 
-  const noteCount = (folderId) =>
+  const noteCount = useCallback((folderId) =>
     notes.filter((n) =>
       folderId === "unfiled"
         ? !n.folderId
         : folderId === "all"
         ? true
         : n.folderId === folderId
-    ).length;
+    ).length, [notes]);
 
   /* ----------------------------------------
      HIGHLIGHT HELPER
@@ -404,17 +536,119 @@ export default function Home() {
     wordCount: notes.reduce((acc, n) => acc + (stripHtml(n.content).split(/\s+/).length), 0)
   }), [notes, folders]);
 
+  const sortedFolders = useMemo(() => {
+    let result = [...folders];
+
+    // 1. Filter folders if filter preference is set to active (only non-empty)
+    if (folderFilter === "active") {
+      result = result.filter(f => noteCount(f.id) > 0);
+    }
+
+    // 2. Sort folders
+    if (folderSort === "alphabetical") {
+      result.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (folderSort === "count") {
+      result.sort((a, b) => noteCount(b.id) - noteCount(a.id));
+    } else {
+      // Custom reordered sort using stored folderOrder array
+      if (folderOrder.length > 0) {
+        result.sort((a, b) => {
+          const idxA = folderOrder.indexOf(a.id);
+          const idxB = folderOrder.indexOf(b.id);
+          
+          const posA = idxA === -1 ? Infinity : idxA;
+          const posB = idxB === -1 ? Infinity : idxB;
+          
+          return posA - posB;
+        });
+      }
+    }
+
+    // 3. Float Pinned Folders to the Top
+    result.sort((a, b) => {
+      const isPinnedA = pinnedFolders.includes(a.id);
+      const isPinnedB = pinnedFolders.includes(b.id);
+      if (isPinnedA && !isPinnedB) return -1;
+      if (!isPinnedA && isPinnedB) return 1;
+      return 0;
+    });
+
+    return result;
+  }, [folders, folderOrder, folderSort, folderFilter, pinnedFolders, noteCount]);
+
   const filteredFolders = useMemo(() => {
-    if (!sidebarSearch.trim()) return folders;
+    if (!sidebarSearch.trim()) return sortedFolders;
     const q = sidebarSearch.toLowerCase();
-    return folders.filter(f => f.name.toLowerCase().includes(q));
-  }, [folders, sidebarSearch]);
+    return sortedFolders.filter(f => f.name.toLowerCase().includes(q));
+  }, [sortedFolders, sidebarSearch]);
+
+  const sortedTrackers = useMemo(() => {
+    let result = [...trackers];
+
+    // 1. Sort alphabetically by default
+    result.sort((a, b) => a.name.localeCompare(b.name));
+
+    // 2. Float Pinned Trackers to the Top
+    result.sort((a, b) => {
+      const isPinnedA = pinnedTrackers.includes(a.id);
+      const isPinnedB = pinnedTrackers.includes(b.id);
+      if (isPinnedA && !isPinnedB) return -1;
+      if (!isPinnedA && isPinnedB) return 1;
+      return 0;
+    });
+
+    return result;
+  }, [trackers, pinnedTrackers]);
 
   const filteredTrackers = useMemo(() => {
-    if (!sidebarSearch.trim()) return trackers;
+    if (!sidebarSearch.trim()) return sortedTrackers;
     const q = sidebarSearch.toLowerCase();
-    return trackers.filter(t => t.name.toLowerCase().includes(q));
-  }, [trackers, sidebarSearch]);
+    return sortedTrackers.filter(t => t.name.toLowerCase().includes(q));
+  }, [sortedTrackers, sidebarSearch]);
+
+  // Swapping/Reordering logic
+  const moveFolder = useCallback((folderId, direction) => {
+    const currentSortedIds = sortedFolders.map(f => f.id);
+    const index = currentSortedIds.indexOf(folderId);
+    if (index === -1) return;
+
+    const newIndex = direction === "up" ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= currentSortedIds.length) return;
+
+    const newOrder = [...currentSortedIds];
+    const temp = newOrder[index];
+    newOrder[index] = newOrder[newIndex];
+    newOrder[newIndex] = temp;
+
+    setFolderOrder(newOrder);
+    if (user) {
+      localStorage.setItem(`folder_order_${user.uid}`, JSON.stringify(newOrder));
+    }
+  }, [user, sortedFolders]);
+
+  // Renaming folder logic
+  const handleRenameFolder = useCallback(async (folderId) => {
+    const newName = editingFolderName.trim();
+    if (!newName || newName === folders.find(f => f.id === folderId)?.name) {
+      setEditingFolderId(null);
+      setEditingFolderName("");
+      return;
+    }
+
+    setFolders((prev) =>
+      prev.map((f) => (f.id === folderId ? { ...f, name: newName } : f))
+    );
+    setEditingFolderId(null);
+    setEditingFolderName("");
+
+    try {
+      await updateFolder(user.uid, folderId, newName);
+      refresh();
+    } catch (err) {
+      console.error(err);
+      refresh();
+    }
+  }, [user, editingFolderName, folders, refresh]);
 
   if (loading) {
   
@@ -438,9 +672,43 @@ export default function Home() {
 
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-background">
+    <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-background relative">
+      {/* Mobile Sidebar backdrop overlay */}
+      {sidebarOpen && (
+        <div 
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 bg-background/40 backdrop-blur-sm z-35 md:hidden animate-fade-in cursor-pointer"
+        />
+      )}
+
+      {/* Sidebar open/collapse floating toggle handle */}
+      <button
+        onClick={toggleSidebar}
+        className={`
+          fixed z-50 p-1.5 rounded-r-lg border border-l-0 border-border/50 bg-card hover:text-primary transition-all duration-300 shadow-sm hover:shadow cursor-pointer
+          top-[76px]
+          ${sidebarOpen ? "left-[288px]" : "left-0"}
+        `}
+        title={sidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+      >
+        {sidebarOpen ? (
+          <ChevronLeft className="h-4 w-4" />
+        ) : (
+          <ChevronRight className="h-4 w-4" />
+        )}
+      </button>
+
       {/* SIDEBAR */}
-      <aside className="hidden md:flex w-72 border-r border-border/50 p-6 flex-col gap-8 bg-indigo-50/50 dark:bg-indigo-950/20 h-full overflow-y-auto scrollbar-thin shrink-0">
+      <aside 
+        className={`
+          fixed md:static inset-y-0 left-0 z-40 
+          flex flex-col gap-8 
+          bg-indigo-50/50 dark:bg-indigo-950/20 
+          h-full overflow-y-auto scrollbar-thin shrink-0
+          transition-all duration-300 ease-in-out
+          ${sidebarOpen ? "w-72 p-6 border-r border-border/50" : "w-0 p-0 border-none overflow-hidden"}
+        `}
+      >
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input
@@ -453,17 +721,91 @@ export default function Home() {
         </div>
         
         <div className="space-y-4">
-          <div className="flex items-center justify-between group">
+          <div className="flex items-center justify-between group relative">
             <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-2">
               Collections
             </h2>
-            <button
-              onClick={() => setShowNewFolderInput(true)}
-              className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-primary transition-colors"
-              title="New Folder"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              {/* Display settings dropdown */}
+              <div ref={folderOptionsRef} className="relative">
+                <button
+                  onClick={() => setShowFolderOptions(!showFolderOptions)}
+                  className={`p-1 rounded text-muted-foreground hover:bg-muted hover:text-primary transition-all cursor-pointer ${
+                    showFolderOptions ? "bg-muted text-primary" : ""
+                  }`}
+                  title="Folder Display Options"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </button>
+                
+                {showFolderOptions && (
+                  <div className="absolute right-0 top-full mt-2 w-48 p-3 rounded-xl border border-border/50 bg-card shadow-lg z-50 animate-scale-in text-foreground">
+                    <div className="space-y-3">
+                      {/* Sort Options */}
+                      <div>
+                        <span className="text-[10px] uppercase tracking-wider font-extrabold text-muted-foreground block mb-1">Sort</span>
+                        <div className="flex flex-col gap-0.5">
+                          {[
+                            { value: "custom", label: "Custom (Manual)" },
+                            { value: "alphabetical", label: "Alphabetical (A-Z)" },
+                            { value: "count", label: "Note Count" }
+                          ].map(opt => (
+                            <button
+                              key={opt.value}
+                              onClick={() => {
+                                setFolderSort(opt.value);
+                                setShowFolderOptions(false);
+                              }}
+                              className={`text-left px-2 py-1 text-xs rounded transition-colors cursor-pointer ${
+                                folderSort === opt.value
+                                  ? "bg-primary/10 text-primary font-bold"
+                                  : "hover:bg-muted text-muted-foreground"
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Filter Options */}
+                      <div className="border-t border-border/50 pt-2">
+                        <span className="text-[10px] uppercase tracking-wider font-extrabold text-muted-foreground block mb-1">Filter</span>
+                        <div className="flex flex-col gap-0.5">
+                          {[
+                            { value: "all", label: "Show All" },
+                            { value: "active", label: "Hide Empty" }
+                          ].map(opt => (
+                            <button
+                              key={opt.value}
+                              onClick={() => {
+                                setFolderFilter(opt.value);
+                                setShowFolderOptions(false);
+                              }}
+                              className={`text-left px-2 py-1 text-xs rounded transition-colors cursor-pointer ${
+                                folderFilter === opt.value
+                                  ? "bg-primary/10 text-primary font-bold"
+                                  : "hover:bg-muted text-muted-foreground"
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => setShowNewFolderInput(true)}
+                className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                title="New Folder"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           <div className="space-y-1">
@@ -527,42 +869,129 @@ export default function Home() {
               </div>
             )}
 
-            {filteredFolders.map((folder, fi) => (
-              <div
-                key={folder.id}
-                onDragOver={(e) => e.preventDefault()}
-                onDragEnter={() => setDragOverFolder(folder.id)}
-                onDragLeave={() => setDragOverFolder(null)}
-                onDrop={() => handleDrop(folder.id)}
-                style={{ animationDelay: `${fi * 60}ms` }}
-                className={`group animate-sidebar-in flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all ${
-                  activeFolder === folder.id && !activeTrackerId
-                    ? "bg-primary/10 text-primary"
-                    : dragOverFolder === folder.id
-                    ? "bg-primary/5 ring-1 ring-primary/20"
-                    : "text-muted-foreground hover:bg-muted"
-                }`}
-                onClick={() => {
-                  setActiveFolder(folder.id);
-                  setActiveTrackerId(null);
-                }}
-              >
-                <div className={`h-2 w-2 rounded-full ${folderColor(folder.name)}`} />
-                <span className="truncate flex-1">{folder.name}</span>
-                <span className="text-xs opacity-60 group-hover:hidden">
-                  {noteCount(folder.id)}
-                </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteFolder(folder.id, folder.name);
+            {filteredFolders.map((folder, fi) => {
+              const isEditing = editingFolderId === folder.id;
+              
+              return (
+                <div
+                  key={folder.id}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDragEnter={() => setDragOverFolder(folder.id)}
+                  onDragLeave={() => setDragOverFolder(null)}
+                  onDrop={() => handleDrop(folder.id)}
+                  style={{ animationDelay: `${fi * 60}ms` }}
+                  className={`group animate-sidebar-in flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all ${
+                    activeFolder === folder.id && !activeTrackerId
+                      ? "bg-primary/10 text-primary"
+                      : dragOverFolder === folder.id
+                      ? "bg-primary/5 ring-1 ring-primary/20"
+                      : "text-muted-foreground hover:bg-muted"
+                  }`}
+                  onClick={() => {
+                    if (!isEditing) {
+                      setActiveFolder(folder.id);
+                      setActiveTrackerId(null);
+                    }
                   }}
-                  className="hidden group-hover:flex p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-colors"
                 >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
+                  <div className={`h-2 w-2 rounded-full shrink-0 ${folderColor(folder.name)}`} />
+                  
+                  {isEditing ? (
+                    <input
+                      autoFocus
+                      type="text"
+                      value={editingFolderName}
+                      onChange={(e) => setEditingFolderName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleRenameFolder(folder.id);
+                        if (e.key === "Escape") {
+                          setEditingFolderId(null);
+                          setEditingFolderName("");
+                        }
+                      }}
+                      onBlur={() => handleRenameFolder(folder.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex-1 bg-background border border-border/85 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  ) : (
+                    <>
+                      <span className="truncate flex-1">{folder.name}</span>
+                      
+                      <span className="text-xs opacity-60 group-hover:hidden">
+                        {noteCount(folder.id)}
+                      </span>
+
+                      {/* Manual Reordering (Chevrons) - Only active in custom sort mode */}
+                      {folderSort === "custom" && (
+                        <div className="hidden group-hover:flex items-center gap-0.5 text-muted-foreground/80">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveFolder(folder.id, "up");
+                            }}
+                            className="p-0.5 hover:bg-muted-foreground/15 hover:text-foreground rounded transition-colors"
+                            title="Move Up"
+                          >
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveFolder(folder.id, "down");
+                            }}
+                            className="p-0.5 hover:bg-muted-foreground/15 hover:text-foreground rounded transition-colors"
+                            title="Move Down"
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Pin Folder */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          togglePinFolder(folder.id);
+                        }}
+                        className={`p-1 rounded transition-colors cursor-pointer ${
+                          pinnedFolders.includes(folder.id)
+                            ? "flex text-primary bg-primary/10 hover:bg-primary/20"
+                            : "hidden group-hover:flex text-muted-foreground hover:bg-muted hover:text-foreground"
+                        }`}
+                        title={pinnedFolders.includes(folder.id) ? "Unpin Folder" : "Pin Folder"}
+                      >
+                        <Pin className={`h-3 w-3 ${pinnedFolders.includes(folder.id) ? "fill-primary" : "rotate-45"}`} />
+                      </button>
+
+                      {/* Rename Folder (Edit) */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingFolderId(folder.id);
+                          setEditingFolderName(folder.name);
+                        }}
+                        className="hidden group-hover:flex p-1 hover:bg-muted rounded text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                        title="Rename Folder"
+                      >
+                        <Edit className="h-3 w-3" />
+                      </button>
+
+                      {/* Delete Folder */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteFolder(folder.id, folder.name);
+                        }}
+                        className="hidden group-hover:flex p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-colors cursor-pointer"
+                        title="Delete Folder"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
 
             <button
               onClick={() => {
@@ -618,36 +1047,60 @@ export default function Home() {
                 </div>
               )}
 
-              {filteredTrackers.map((tracker, ti) => (
-                <div
-                  key={tracker.id}
-                  style={{ animationDelay: `${ti * 60}ms` }}
-                  className={`group animate-sidebar-in flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all ${
-                    activeTrackerId === tracker.id
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-muted"
-                  }`}
-                  onClick={() => {
-                    setActiveTrackerId(tracker.id);
-                    setActiveFolder(null);
-                  }}
-                >
-                  <Table className="h-4 w-4 text-primary opacity-80" />
-                  <span className="truncate flex-1">{tracker.name}</span>
-                  <span className="text-xs opacity-60 group-hover:hidden">
-                    {tracker.rows?.length || 0}
-                  </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteTracker(tracker.id, tracker.name);
+              {filteredTrackers.map((tracker, ti) => {
+                const isPinned = pinnedTrackers.includes(tracker.id);
+                
+                return (
+                  <div
+                    key={tracker.id}
+                    style={{ animationDelay: `${ti * 60}ms` }}
+                    className={`group animate-sidebar-in flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all ${
+                      activeTrackerId === tracker.id
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-muted"
+                    }`}
+                    onClick={() => {
+                      setActiveTrackerId(tracker.id);
+                      setActiveFolder(null);
                     }}
-                    className="hidden group-hover:flex p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-colors"
                   >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
+                    <Table className="h-4 w-4 text-primary opacity-80 shrink-0" />
+                    <span className="truncate flex-1">{tracker.name}</span>
+                    
+                    <span className="text-xs opacity-60 group-hover:hidden">
+                      {tracker.rows?.length || 0}
+                    </span>
+
+                    {/* Pin Tracker */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        togglePinTracker(tracker.id);
+                      }}
+                      className={`p-1 rounded transition-colors cursor-pointer ${
+                        isPinned
+                          ? "flex text-primary bg-primary/10 hover:bg-primary/20"
+                          : "hidden group-hover:flex text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                      title={isPinned ? "Unpin Tracker" : "Pin Tracker"}
+                    >
+                      <Pin className={`h-3 w-3 ${isPinned ? "fill-primary" : "rotate-45"}`} />
+                    </button>
+
+                    {/* Delete Tracker */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteTracker(tracker.id, tracker.name);
+                      }}
+                      className="hidden group-hover:flex p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-colors cursor-pointer"
+                      title="Delete Tracker"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

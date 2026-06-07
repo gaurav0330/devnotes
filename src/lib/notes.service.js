@@ -27,6 +27,15 @@ export const createFolder = async (userId, name) => {
   });
 };
 
+// Rename/Update folder name
+export const updateFolder = async (userId, folderId, name) => {
+  if (!name.trim()) throw new Error("Folder name required");
+
+  await updateDoc(doc(db, "users", userId, "folders", folderId), {
+    name: name.trim(),
+  });
+};
+
 // Get folders
 export const getUserFolders = async (userId) => {
   const snap = await getDocs(collection(db, "users", userId, "folders"));

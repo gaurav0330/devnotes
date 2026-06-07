@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
   getPublicNoteBySlug,
   getPrivateNoteBySlug,
@@ -23,6 +23,8 @@ import {
   Clock,
   AlignLeft,
   ALargeSmall,
+  Terminal,
+  Eraser,
 } from "lucide-react";
 
 // ✅ Native print-based PDF export — works with all CSS color functions (oklab, oklch, etc.)
@@ -188,6 +190,32 @@ export default function ViewNote() {
   // Custom typography states (persisted in localStorage)
   const [fontStyle, setFontStyle] = useState(() => localStorage.getItem("reader_font_style") || "sans");
   const [fontSize, setFontSize] = useState(() => localStorage.getItem("reader_font_size") || "base");
+
+  // Scratchpad states
+  const [isScratchpadOpen, setIsScratchpadOpen] = useState(false);
+  const [scratchpadText, setScratchpadText] = useState(() => localStorage.getItem(`scratchpad_${slug}`) || "");
+  const [scratchpadCopied, setScratchpadCopied] = useState(false);
+
+  // Sync scratchpad changes to localStorage
+  useEffect(() => {
+    localStorage.setItem(`scratchpad_${slug}`, scratchpadText);
+  }, [scratchpadText, slug]);
+
+  const copyScratchpad = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(scratchpadText);
+      setScratchpadCopied(true);
+      setTimeout(() => setScratchpadCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy scratchpad text: ", err);
+    }
+  }, [scratchpadText]);
+
+  const clearScratchpad = useCallback(() => {
+    if (window.confirm("Are you sure you want to clear your scratchpad?")) {
+      setScratchpadText("");
+    }
+  }, []);
   const [showSettings, setShowSettings] = useState(false);
 
   const contentRef = useRef(null);
@@ -408,9 +436,9 @@ export default function ViewNote() {
         style={{ width: `${scrollProgress}%` }}
       />
 
-      <div className="max-w-4xl mx-auto p-6">
-        {/* Top Actions Bar */}
-        <div className="flex justify-between items-center mb-8 gap-4 flex-wrap">
+      <div className={`mx-auto p-6 transition-all duration-300 ${isScratchpadOpen ? "max-w-[95vw]" : "max-w-4xl"}`}>
+        {/* Top Actions Bar (Sticky) */}
+        <div className="sticky top-16 z-30 flex justify-between items-center gap-4 flex-wrap bg-background/85 backdrop-blur-md py-3.5 border-b border-border/10 mb-8 rounded-b-xl px-4 -mx-4 shadow-sm shadow-black/[0.01]">
           <Button 
             variant="ghost" 
             onClick={() => navigate("/")} 
@@ -506,6 +534,20 @@ export default function ViewNote() {
               <span>{exporting === "md" ? "Exporting…" : "Markdown"}</span>
             </Button>
 
+            {/* Practice Scratchpad Toggle */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIsScratchpadOpen(!isScratchpadOpen)}
+              className={`gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all ${
+                isScratchpadOpen ? "bg-primary/10 text-primary border-primary/45 shadow-sm font-semibold" : ""
+              }`}
+              title="Toggle Code Practice Scratchpad"
+            >
+              <Terminal className="h-4 w-4" />
+              <span>{isScratchpadOpen ? "Close Practice" : "Practice"}</span>
+            </Button>
+
             {/* Copy Link */}
             <Button 
               size="sm" 
@@ -544,8 +586,10 @@ export default function ViewNote() {
           </div>
         </div>
 
-        {/* Note Card */}
-        <div className="border border-border/40 rounded-3xl overflow-hidden bg-card shadow-premium hover:shadow-neon/5 hover:border-primary/20 transition-all duration-300">
+        {/* Dynamic Grid Layout Wrapper */}
+        <div className={`grid gap-6 items-start transition-all duration-300 ${isScratchpadOpen ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
+          {/* Note Card */}
+          <div className="border border-border/40 rounded-3xl overflow-hidden bg-card shadow-premium hover:shadow-neon/5 hover:border-primary/20 transition-all duration-300">
           
           {/* Card Header Section */}
           <div className="p-8 border-b border-border/50 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5">
@@ -609,7 +653,58 @@ export default function ViewNote() {
             <div ref={contentRef} dangerouslySetInnerHTML={{ __html: note.content }} />
           </div>
         </div>
+
+        {/* Practice Scratchpad Side Panel */}
+        {isScratchpadOpen && (
+          <div className="border border-border/40 rounded-3xl overflow-hidden bg-card shadow-premium p-6 md:p-8 space-y-4 flex flex-col h-[750px] animate-scale-in">
+            <div className="flex items-center justify-between border-b border-border/50 pb-4 shrink-0">
+              <div className="flex items-center gap-2">
+                <Terminal className="h-5 w-5 text-primary animate-pulse" />
+                <h3 className="font-extrabold text-lg">Practice Scratchpad</h3>
+              </div>
+              <div className="flex gap-2">
+                {/* Copy scratchpad code button */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={copyScratchpad}
+                  className={`gap-1.5 h-8 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer ${
+                    scratchpadCopied ? "border-emerald-500/50 text-emerald-500 bg-emerald-500/5 hover:bg-emerald-500/5" : ""
+                  }`}
+                  title="Copy Scratchpad Content"
+                >
+                  {scratchpadCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  <span className="text-xs">{scratchpadCopied ? "Copied!" : "Copy"}</span>
+                </Button>
+                
+                {/* Clear scratchpad code button */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={clearScratchpad}
+                  disabled={!scratchpadText}
+                  className="gap-1.5 h-8 text-muted-foreground hover:text-destructive hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+                  title="Clear Scratchpad Content"
+                >
+                  <Eraser className="h-3.5 w-3.5" />
+                  <span className="text-xs">Clear</span>
+                </Button>
+              </div>
+            </div>
+            
+            <div className="flex-1 flex flex-col gap-2 relative h-full">
+              <textarea
+                value={scratchpadText}
+                onChange={(e) => setScratchpadText(e.target.value)}
+                placeholder="// Paste some code from the note here to practice, edit, or modify..."
+                className="flex-1 w-full h-full p-4 rounded-2xl bg-muted/30 border border-border/60 font-mono text-xs sm:text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground/30 leading-relaxed text-foreground"
+              />
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
+  </div>
   );
 }
