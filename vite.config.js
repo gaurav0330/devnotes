@@ -15,4 +15,31 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("firebase")) {
+              return "vendor-firebase";
+            }
+            if (id.includes("@tiptap")) {
+              return "vendor-tiptap";
+            }
+            if (id.includes("lowlight") || id.includes("highlight.js")) {
+              return "vendor-lowlight";
+            }
+            if (
+              id.includes("react") ||
+              id.includes("react-dom") ||
+              id.includes("react-router-dom")
+            ) {
+              return "vendor-react";
+            }
+            return "vendor-others";
+          }
+        },
+      },
+    },
+  },
 })

@@ -81,7 +81,7 @@ const getTypeConfig = (colType) =>
 /* ── Menu primitives ──────────────────────────────────────────────────────── */
 
 const MenuItem = ({
-  icon: Icon,
+  icon,
   label,
   desc,
   onClick,
@@ -89,76 +89,79 @@ const MenuItem = ({
   checked = false,
   disabled = false,
   shortcut,
-}) => (
-  <button
-    disabled={disabled}
-    className={[
-      "w-full flex items-center gap-2.5 px-3 py-2 text-left transition-all duration-100 group/item",
-      disabled
-        ? "opacity-40 cursor-not-allowed"
-        : danger
-        ? "hover:bg-red-500/10 cursor-pointer"
-        : "hover:bg-white/5 cursor-pointer",
-    ].join(" ")}
-    onMouseDown={(e) => {
-      if (disabled) return;
-      e.preventDefault();
-      e.stopPropagation();
-      onClick();
-    }}
-  >
-    {/* icon */}
-    <span
+}) => {
+  const IconComp = icon;
+  return (
+    <button
+      disabled={disabled}
       className={[
-        "shrink-0 w-6 h-6 rounded-md flex items-center justify-center transition-colors",
+        "w-full flex items-center gap-2.5 px-3 py-2 text-left transition-all duration-100 group/item",
         disabled
-          ? "text-muted-foreground/40"
+          ? "opacity-40 cursor-not-allowed"
           : danger
-          ? "text-red-400 group-hover/item:bg-red-500/20"
-          : checked
-          ? "text-primary bg-primary/15"
-          : "text-muted-foreground group-hover/item:text-foreground group-hover/item:bg-white/8",
+          ? "hover:bg-red-500/10 cursor-pointer"
+          : "hover:bg-white/5 cursor-pointer",
       ].join(" ")}
+      onMouseDown={(e) => {
+        if (disabled) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      }}
     >
-      <Icon className="h-3.5 w-3.5" />
-    </span>
-
-    {/* label + desc */}
-    <span className="flex-1 flex flex-col min-w-0">
+      {/* icon */}
       <span
         className={[
-          "text-[12px] font-semibold leading-none",
-          danger
-            ? "text-red-400"
-            : checked
-            ? "text-primary"
-            : disabled
+          "shrink-0 w-6 h-6 rounded-md flex items-center justify-center transition-colors",
+          disabled
             ? "text-muted-foreground/40"
-            : "text-foreground/90",
+            : danger
+            ? "text-red-400 group-hover/item:bg-red-500/20"
+            : checked
+            ? "text-primary bg-primary/15"
+            : "text-muted-foreground group-hover/item:text-foreground group-hover/item:bg-white/8",
         ].join(" ")}
       >
-        {label}
-        {checked && (
-          <span className="ml-1.5 text-[10px] font-normal text-primary/70">
-            ✓
+        {IconComp && <IconComp className="h-3.5 w-3.5" />}
+      </span>
+
+      {/* label + desc */}
+      <span className="flex-1 flex flex-col min-w-0">
+        <span
+          className={[
+            "text-[12px] font-semibold leading-none",
+            danger
+              ? "text-red-400"
+              : checked
+              ? "text-primary"
+              : disabled
+              ? "text-muted-foreground/40"
+              : "text-foreground/90",
+          ].join(" ")}
+        >
+          {label}
+          {checked && (
+            <span className="ml-1.5 text-[10px] font-normal text-primary/70">
+              ✓
+            </span>
+          )}
+        </span>
+        {desc && (
+          <span className="text-[10px] text-muted-foreground/50 mt-0.5 leading-tight truncate">
+            {desc}
           </span>
         )}
       </span>
-      {desc && (
-        <span className="text-[10px] text-muted-foreground/50 mt-0.5 leading-tight truncate">
-          {desc}
+
+      {/* keyboard shortcut hint */}
+      {shortcut && (
+        <span className="shrink-0 text-[10px] text-muted-foreground/40 font-mono ml-1">
+          {shortcut}
         </span>
       )}
-    </span>
-
-    {/* keyboard shortcut hint */}
-    {shortcut && (
-      <span className="shrink-0 text-[10px] text-muted-foreground/40 font-mono ml-1">
-        {shortcut}
-      </span>
-    )}
-  </button>
-);
+    </button>
+  );
+};
 
 const Divider = ({ label }) => (
   <div className="px-3 pt-2.5 pb-1 flex items-center gap-2">
@@ -183,15 +186,16 @@ const Divider = ({ label }) => (
  */
 const PortalDropdown = ({ anchorRef, onClose, children }) => {
   const menuRef = useRef(null);
-  const openedAt = useRef(Date.now());
+  const openedAt = useRef(null);
   const [rect, setRect] = useState(null);
 
   /* position relative to viewport (fixed) */
   useLayoutEffect(() => {
+    openedAt.current = Date.now();
     if (!anchorRef.current) return;
     const r = anchorRef.current.getBoundingClientRect();
     setRect(r);
-  }, []); // run once on mount
+  }, [anchorRef]);
 
   /* close on outside mousedown */
   useEffect(() => {
@@ -270,10 +274,14 @@ export const HeaderThCell = ({
   const typeCfg = getTypeConfig(colType);
   const TypeIcon = typeCfg.icon;
 
-  /* sync title if prop changes */
-  useEffect(() => {
-    if (!isEditing) setEditVal(title);
-  }, [title, isEditing]);
+  /* sync title if prop changes during render */
+  const [prevTitle, setPrevTitle] = useState(title);
+  if (title !== prevTitle) {
+    setPrevTitle(title);
+    if (!isEditing) {
+      setEditVal(title);
+    }
+  }
 
   /* focus input when rename starts */
   useEffect(() => {

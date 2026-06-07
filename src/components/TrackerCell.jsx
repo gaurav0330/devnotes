@@ -5,7 +5,7 @@
  * Handles three column types: text, note (linked), checkbox.
  */
 
-import React, { useRef } from "react";
+import React from "react";
 import { Link } from "react-router-dom";
 import { ExternalLink } from "lucide-react";
 

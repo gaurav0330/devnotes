@@ -1,8 +1,19 @@
-﻿const search = "task 1";
-const normalRows = [
-  { id: 1, cells: ["Task 1", "", false] },
-  { id: 2, cells: ["Another Task", "", false] }
-];
-const q = search.toLowerCase();
-const filtered = normalRows.filter(r => r.cells.some(c => String(c).toLowerCase().includes(q)));
-console.log(filtered);
+async function test() {
+  try {
+    const res = await fetch("https://wandbox.org/api/compile.json", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        compiler: "gcc-13.2.0",
+        code: `#include <iostream>\nint main() {\n  std::cout << "Hello Wandbox!" << std::endl;\n  return 0;\n}`
+      })
+    });
+    const data = await res.json();
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    console.error(err);
+  }
+}
+test();

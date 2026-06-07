@@ -13,7 +13,8 @@ import {
 import { 
   restoreNoteById, 
   hardDeleteNoteById, 
-  deleteNoteById 
+  deleteNoteById,
+  prefetchNote
 } from "@/lib/notes.service";
 
 export const Highlight = React.memo(({ text, query }) => {
@@ -38,9 +39,8 @@ Highlight.displayName = "Highlight";
 
 export const NoteCard = React.memo(({ note, userId, onTogglePin, onRefresh, onDragStart, search, animIndex = 0 }) => {
   const stripHtml = (html) => {
-    const div = document.createElement("div");
-    div.innerHTML = html || "";
-    return div.textContent || "";
+    if (!html) return "";
+    return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
   };
 
   const contentText = stripHtml(note.content);
@@ -102,6 +102,11 @@ export const NoteCard = React.memo(({ note, userId, onTogglePin, onRefresh, onDr
       to={note.deletedAt ? "#" : `/note/${note.slug}`}
       draggable={!note.deletedAt}
       onDragStart={!note.deletedAt ? onDragStart : undefined}
+      onMouseEnter={() => {
+        if (!note.deletedAt) {
+          prefetchNote(userId, note.slug, note.visibility);
+        }
+      }}
       style={{ animationDelay: `${delay}ms` }}
       className={`group relative flex flex-col border border-border/50 rounded-3xl p-6 bg-card transition-all duration-300 overflow-hidden animate-card-in ${
         note.deletedAt 

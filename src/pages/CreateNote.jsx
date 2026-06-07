@@ -200,7 +200,6 @@ export default function CreateNote() {
   const [isFocusMode, setFocusMode] = useState(false);
 
   const [pendingDraft, setPendingDraft] = useState(() => readDraft());
-  const hasDraft = !!pendingDraft;
 
   const hasContent = title || content || tags.length > 0;
 

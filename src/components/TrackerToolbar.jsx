@@ -28,7 +28,6 @@ const TrackerToolbar = ({
   totalTasks,
   doneTasks,
   pct,
-  allDone,
   search,
   rowCount,
   onSearchChange,

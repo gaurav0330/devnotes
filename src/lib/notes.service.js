@@ -12,6 +12,34 @@ import {
 import { db } from "./firebase";
 import LZString from "lz-string";
 
+// ─── Cache and HTML stripping helpers ─────────────────────────────────────────
+export const noteCache = new Map();
+
+export const prefetchNote = async (userId, slug, visibility) => {
+  const cacheKey = `${userId || "public"}_${slug}`;
+  if (noteCache.has(cacheKey)) return;
+
+  try {
+    let fetchPromise;
+    if (visibility === "public") {
+      fetchPromise = getPublicNoteBySlug(slug);
+    } else if (userId) {
+      fetchPromise = getPrivateNoteBySlug(userId, slug);
+    }
+    if (fetchPromise) {
+      noteCache.set(cacheKey, fetchPromise);
+      setTimeout(() => noteCache.delete(cacheKey), 5 * 60 * 1000); // 5 min expiry
+    }
+  } catch (err) {
+    console.error("Prefetch failed:", err);
+  }
+};
+
+const stripHtml = (html) => {
+  if (!html) return "";
+  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+};
+
 
 /* ===============================
    FOLDER METHODS (NEW)
@@ -113,12 +141,15 @@ export const createNote = async ({
       throw new Error("Note is too large to save. Please shorten it.");
     }
 
+    const previewText = stripHtml(content).substring(0, 200);
+
     // Create private note
     const privateRef = collection(db, "users", userId, "notes");
     const privateDoc = await addDoc(privateRef, {
       title: cleanTitle,
       content: compressedContent,
       isCompressed: true,
+      previewText,
       slug,
       tags: tags.filter((t) => t.trim()),
       visibility,
@@ -135,6 +166,7 @@ export const createNote = async ({
         title: cleanTitle,
         content: compressedContent,
         isCompressed: true,
+        previewText,
         slug,
         tags: tags.filter((t) => t.trim()),
         createdAt: Date.now(),
@@ -161,7 +193,7 @@ export const getUserNotes = async (userId) => {
       return {
         id: d.id,
         ...data,
-        content: decompressContent(data.content, data.isCompressed),
+        content: data.previewText ?? decompressContent(data.content, data.isCompressed),
       };
     });
 
@@ -178,51 +210,73 @@ export const getUserNotes = async (userId) => {
    READ: PUBLIC NOTE BY SLUG
 --------------------------------------------------- */
 export const getPublicNoteBySlug = async (slug) => {
-  try {
-    const q = query(collection(db, "publicNotes"), where("slug", "==", slug));
-    const snap = await getDocs(q);
-
-    if (snap.empty) return null;
-
-    const docSnap = snap.docs[0];
-    const data = docSnap.data();
-
-    return {
-      id: docSnap.id,
-      ...data,
-      content: decompressContent(data.content, data.isCompressed),
-    };
-  } catch (error) {
-    console.error("Error fetching public note:", error);
-    throw error;
+  const cacheKey = `public_${slug}`;
+  if (noteCache.has(cacheKey)) {
+    return noteCache.get(cacheKey);
   }
+
+  const promise = (async () => {
+    try {
+      const q = query(collection(db, "publicNotes"), where("slug", "==", slug));
+      const snap = await getDocs(q);
+
+      if (snap.empty) return null;
+
+      const docSnap = snap.docs[0];
+      const data = docSnap.data();
+
+      return {
+        id: docSnap.id,
+        ...data,
+        content: decompressContent(data.content, data.isCompressed),
+      };
+    } catch (error) {
+      console.error("Error fetching public note:", error);
+      throw error;
+    }
+  })();
+
+  noteCache.set(cacheKey, promise);
+  setTimeout(() => noteCache.delete(cacheKey), 5 * 60 * 1000);
+  return promise;
 };
 
 /* ---------------------------------------------------
    READ: PRIVATE NOTE BY SLUG
---------------------------------------------------- */
+   --------------------------------------------------- */
 export const getPrivateNoteBySlug = async (userId, slug) => {
-  try {
-    const q = query(
-      collection(db, "users", userId, "notes"),
-      where("slug", "==", slug)
-    );
-    const snap = await getDocs(q);
-
-    if (snap.empty) return null;
-
-    const docSnap = snap.docs[0];
-    const data = docSnap.data();
-
-    return {
-      id: docSnap.id,
-      ...data,
-      content: decompressContent(data.content, data.isCompressed),
-    };
-  } catch (error) {
-    console.error("Error fetching private note:", error);
-    throw error;
+  const cacheKey = `${userId || "private"}_${slug}`;
+  if (noteCache.has(cacheKey)) {
+    return noteCache.get(cacheKey);
   }
+
+  const promise = (async () => {
+    try {
+      const q = query(
+        collection(db, "users", userId, "notes"),
+        where("slug", "==", slug)
+      );
+      const snap = await getDocs(q);
+
+      if (snap.empty) return null;
+
+      const docSnap = snap.docs[0];
+      const data = docSnap.data();
+
+      return {
+        id: docSnap.id,
+        ...data,
+        content: decompressContent(data.content, data.isCompressed),
+      };
+    } catch (error) {
+      console.error("Error fetching private note:", error);
+      throw error;
+    }
+  })();
+
+  noteCache.set(cacheKey, promise);
+  setTimeout(() => noteCache.delete(cacheKey), 5 * 60 * 1000);
+  return promise;
 };
 
 /* ---------------------------------------------------
@@ -247,12 +301,18 @@ export const updateNote = async ({
       throw new Error("Note is too large to update. Please shorten it.");
     }
 
+    // Clear memory cache to prevent stale data
+    noteCache.clear();
+
+    const previewText = stripHtml(content).substring(0, 200);
+
     // Update private note
     const privateRef = doc(db, "users", userId, "notes", noteId);
     await updateDoc(privateRef, {
       title: cleanTitle,
       content: compressedContent,
       isCompressed: true,
+      previewText,
       tags: tags.filter((t) => t.trim()),
       visibility,
       folderId: folderId ?? null,
@@ -274,6 +334,7 @@ export const updateNote = async ({
           title: cleanTitle,
           content: compressedContent,
           isCompressed: true,
+          previewText,
           tags: tags.filter((t) => t.trim()),
           updatedAt: Date.now(),
         });
@@ -294,6 +355,7 @@ export const updateNote = async ({
         title: cleanTitle,
         content: compressedContent,
         isCompressed: true,
+        previewText,
         slug,
         tags: tags.filter((t) => t.trim()),
         createdAt: Date.now(),

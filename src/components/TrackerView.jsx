@@ -34,7 +34,6 @@ import React, {
   useCallback,
   useMemo,
   useRef,
-  useEffect,
 } from "react";
 import { Plus, Table } from "lucide-react";
 
@@ -106,6 +105,20 @@ const TrackerView = ({ tracker, notes, onUpdate, onDelete }) => {
   const [formulaValue, setFormulaValue] = useState("");
   const [hasUnsaved, setHasUnsaved] = useState(false);
 
+  /* ── sync formula bar when selection changes during render ────── */
+  const [prevSelectedCell, setPrevSelectedCell] = useState(null);
+  if (selectedCell !== prevSelectedCell) {
+    setPrevSelectedCell(selectedCell);
+    if (!selectedCell) {
+      setFormulaValue("");
+    } else {
+      const { r, c } = selectedCell;
+      const cellVal = filteredRows[r]?.cells[c] ?? "";
+      setFormulaValue(typeof cellVal === "boolean" ? "" : String(cellVal));
+    }
+    setHasUnsaved(false);
+  }
+
   const inputRef = useRef(null);
   const gridRef = useRef(null);
   const resizeRef = useRef(null);
@@ -123,19 +136,6 @@ const TrackerView = ({ tracker, notes, onUpdate, onDelete }) => {
       : 0;
   const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
   const allDone = totalTasks > 0 && doneTasks === totalTasks;
-
-  /* ── sync formula bar when selection changes ──────────────────── */
-  useEffect(() => {
-    if (!selectedCell) {
-      setFormulaValue("");
-      setHasUnsaved(false);
-      return;
-    }
-    const { r, c } = selectedCell;
-    const cellVal = filteredRows[r]?.cells[c] ?? "";
-    setFormulaValue(typeof cellVal === "boolean" ? "" : String(cellVal));
-    setHasUnsaved(false);
-  }, [selectedCell]); // intentionally only on selectedCell
 
   /* ── toggleCompleted ──────────────────────────────────────────── */
   const toggleCompleted = useCallback(

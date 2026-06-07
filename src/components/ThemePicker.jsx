@@ -10,7 +10,8 @@
  *  • Dark/light toggle with animated pill
  */
 
-import { THEMES, useTheme } from "@/context/ThemeContext";
+import { useTheme } from "@/context/ThemeContext";
+import { THEMES } from "@/context/themes";
 import { Moon, Sun, Palette, Check } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 
