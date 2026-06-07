@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getUserNotes,
   getUserFolders,
@@ -73,14 +74,31 @@ const normalizeRow = (row, numHeaders) => {
 export default function Home() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  const [notes, setNotes] = useState([]);
-  const [folders, setFolders] = useState([]);
-  const [trackers, setTrackers] = useState([]);
+  const { data: notes = [], isLoading: notesLoading } = useQuery({
+    queryKey: ["notes", user?.uid],
+    queryFn: () => getUserNotes(user.uid),
+    enabled: !!user,
+  });
+
+  const { data: folders = [], isLoading: foldersLoading } = useQuery({
+    queryKey: ["folders", user?.uid],
+    queryFn: () => getUserFolders(user.uid),
+    enabled: !!user,
+  });
+
+  const { data: trackers = [], isLoading: trackersLoading } = useQuery({
+    queryKey: ["trackers", user?.uid],
+    queryFn: () => getUserTrackers(user.uid),
+    enabled: !!user,
+  });
+
+  const loading = notesLoading || foldersLoading || trackersLoading;
+
   const [activeFolder, setActiveFolder] = useState("all");
   const [activeTrackerId, setActiveTrackerId] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState(""); // Local instant state
   const [sidebarSearch, setSidebarSearch] = useState("");
@@ -284,28 +302,13 @@ export default function Home() {
   
 
   /* ----------------------------------------
-     LOAD DATA
+     LOAD DATA (TanStack Query Invalidation)
   ---------------------------------------- */
-  const refresh = useCallback(async (isInitial = false) => {
-    if (isInitial) setLoading(true);
-    try {
-      const [notesSnap, foldersSnap, trackersSnap] = await Promise.all([
-        getUserNotes(user.uid),
-        getUserFolders(user.uid),
-        getUserTrackers(user.uid),
-      ]);
-      setNotes(notesSnap);
-      setFolders(foldersSnap);
-      setTrackers(trackersSnap);
-    } finally {
-      if (isInitial) setLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (!user) return;
-    refresh(true);
-  }, [user, refresh]);
+  const refresh = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["notes", user?.uid] });
+    queryClient.invalidateQueries({ queryKey: ["folders", user?.uid] });
+    queryClient.invalidateQueries({ queryKey: ["trackers", user?.uid] });
+  }, [user, queryClient]);
 
   /* ----------------------------------------
      HELPERS
@@ -338,17 +341,11 @@ export default function Home() {
     if (!folderName || !folderName.trim()) return;
     const name = folderName.trim();
 
-    // Optimistic Update
-    const tempId = Date.now().toString();
-    const newFolderObj = { id: tempId, name };
-    setFolders((prev) => [...prev, newFolderObj]);
-
     try {
       await createFolder(user.uid, name);
       refresh();
     } catch (err) {
       console.error(err);
-      refresh(); // Rollback
     }
   }, [user, refresh]);
 
@@ -358,8 +355,6 @@ export default function Home() {
     );
     if (!ok) return;
 
-    // Optimistic Update
-    setFolders((prev) => prev.filter((f) => f.id !== folderId));
     if (activeFolder === folderId) setActiveFolder("all");
 
     try {
@@ -367,31 +362,20 @@ export default function Home() {
       refresh();
     } catch (err) {
       console.error(err);
-      refresh();
     }
   }, [user, activeFolder, refresh]);
 
   const handleTogglePin = useCallback(async (noteId, currentPinned) => {
-    // Optimistic Update
-    setNotes((prev) =>
-      prev.map((n) => (n.id === noteId ? { ...n, isPinned: !currentPinned } : n))
-    );
-
     try {
       await togglePinNote(user.uid, noteId, currentPinned);
+      refresh();
     } catch (err) {
       console.error(err);
-      refresh();
     }
   }, [user, refresh]);
 
   const handleDrop = useCallback(async (folderId) => {
     if (!draggingId) return;
-
-    // Optimistic Update
-    setNotes((prev) =>
-      prev.map((n) => (n.id === draggingId ? { ...n, folderId } : n))
-    );
 
     try {
       await moveNoteToFolder(user.uid, draggingId, folderId);
@@ -399,7 +383,6 @@ export default function Home() {
       refresh();
     } catch (err) {
       console.error(err);
-      refresh();
     }
   }, [user, draggingId, refresh]);
 
@@ -410,37 +393,23 @@ export default function Home() {
     if (!trackerName || !trackerName.trim()) return;
     const name = trackerName.trim();
 
-    // Optimistic Update
-    const tempId = Date.now().toString();
-    const newTrackerObj = { id: tempId, name, rows: [] };
-    setTrackers((prev) => [...prev, newTrackerObj]);
-    setActiveTrackerId(tempId); // select the newly created tracker
     setActiveFolder(null); // Deselect active folder
 
     try {
       const realId = await createTracker(user.uid, name);
-      setTrackers((prev) =>
-        prev.map((t) => (t.id === tempId ? { ...t, id: realId } : t))
-      );
       setActiveTrackerId(realId);
       refresh();
     } catch (err) {
       console.error(err);
-      refresh(); // Rollback
     }
   }, [user, refresh]);
 
   const handleUpdateTracker = useCallback(async (trackerId, updates) => {
-    // Optimistic Update
-    setTrackers((prev) =>
-      prev.map((t) => (t.id === trackerId ? { ...t, ...updates } : t))
-    );
-
     try {
       await updateTracker(user.uid, trackerId, updates);
+      refresh();
     } catch (err) {
       console.error("Tracker update failed:", err);
-      refresh(); // Rollback
     }
   }, [user, refresh]);
 
@@ -448,8 +417,6 @@ export default function Home() {
     const ok = window.confirm(`Delete tracker "${trackerName}"?\nThis cannot be undone.`);
     if (!ok) return;
 
-    // Optimistic Update
-    setTrackers((prev) => prev.filter((t) => t.id !== trackerId));
     if (activeTrackerId === trackerId) setActiveTrackerId(null);
 
     try {
@@ -457,7 +424,6 @@ export default function Home() {
       refresh();
     } catch (err) {
       console.error(err);
-      refresh();
     }
   }, [user, activeTrackerId, refresh]);
 
@@ -472,9 +438,9 @@ export default function Home() {
         visibility: "private"
       });
 
-      // Find the created note to get its Firestore ID
+      // Invalidate queries so that getUserNotes finds the created note
+      queryClient.invalidateQueries({ queryKey: ["notes", user.uid] });
       const notesSnap = await getUserNotes(user.uid);
-      setNotes(notesSnap);
       const newNote = notesSnap.find(n => n.slug === slug);
       if (!newNote) throw new Error("Could not retrieve created note ID");
 
@@ -491,11 +457,9 @@ export default function Home() {
           }
           return norm;
         });
-        // Save tracker update
-        setTrackers((prev) =>
-          prev.map((t) => (t.id === trackerId ? { ...t, rows: updatedRows } : t))
-        );
+        
         await updateTracker(user.uid, trackerId, { rows: updatedRows });
+        queryClient.invalidateQueries({ queryKey: ["trackers", user.uid] });
       }
 
       // Redirect to edit the new note
@@ -504,7 +468,7 @@ export default function Home() {
       console.error("Failed to create & link note:", err);
       alert("Failed to create & link note: " + err.message);
     }
-  }, [user, trackers, navigate]);
+  }, [user, trackers, navigate, queryClient]);
 
 
   const processedNotes = useMemo(() => {
@@ -687,9 +651,6 @@ export default function Home() {
       return;
     }
 
-    setFolders((prev) =>
-      prev.map((f) => (f.id === folderId ? { ...f, name: newName } : f))
-    );
     setEditingFolderId(null);
     setEditingFolderName("");
 

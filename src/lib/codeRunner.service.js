@@ -33,7 +33,7 @@ export const LANGUAGES = [
   }
 ];
 
-async function executeGlotCode(languageId, code, token) {
+async function executeGlotCode(languageId, files, token) {
   const langConfig = LANGUAGES.find((l) => l.id === languageId);
   if (!langConfig) {
     throw new Error(`Unsupported language: ${languageId}`);
@@ -47,12 +47,10 @@ async function executeGlotCode(languageId, code, token) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        files: [
-          {
-            name: langConfig.glotFile,
-            content: code
-          }
-        ]
+        files: files.map((f) => ({
+          name: f.name,
+          content: f.content
+        }))
       })
     });
 
@@ -89,19 +87,29 @@ async function executeGlotCode(languageId, code, token) {
   }
 }
 
-async function executeWandboxCode(languageId, code) {
+async function executeWandboxCode(languageId, files, activeFileName) {
   const langConfig = LANGUAGES.find((l) => l.id === languageId);
   if (!langConfig) {
     throw new Error(`Unsupported language: ${languageId}`);
   }
 
+  const activeFile = files.find((f) => f.name === activeFileName);
+  const activeContent = activeFile ? activeFile.content : "";
+
   // Wandbox compiles Java in a file named "prog.java".
-  // A public class named "Main" will fail compilation because the class name must match the filename.
   // We strip "public" from "public class Main" to compile successfully.
-  let finalCode = code;
+  let finalCode = activeContent;
   if (languageId === "java") {
-    finalCode = code.replace(/\bpublic\s+class\b/g, "class");
+    finalCode = activeContent.replace(/\bpublic\s+class\b/g, "class");
   }
+
+  // Format secondary files for Wandbox: { file: name, code: content }
+  const secondaryCodes = files
+    .filter((f) => f.name !== activeFileName)
+    .map((f) => ({
+      file: f.name,
+      code: f.content
+    }));
 
   try {
     const response = await fetch("https://corsproxy.io/?url=https://wandbox.org/api/compile.json", {
@@ -111,7 +119,8 @@ async function executeWandboxCode(languageId, code) {
       },
       body: JSON.stringify({
         compiler: langConfig.compiler,
-        code: finalCode
+        code: finalCode,
+        codes: secondaryCodes
       })
     });
 
@@ -140,12 +149,21 @@ async function executeWandboxCode(languageId, code) {
   }
 }
 
-export async function executeCode(languageId, code, token) {
+export async function executeCode(languageId, files, activeFileName, token) {
+  // Support backward compatibility if called with a single string instead of files list:
+  let finalFiles = files;
+  let mainFile = activeFileName;
+  if (typeof files === "string") {
+    const langConfig = LANGUAGES.find((l) => l.id === languageId);
+    mainFile = langConfig ? langConfig.glotFile : "main.js";
+    finalFiles = [{ name: mainFile, content: files }];
+  }
+
   if (token && token.trim()) {
-    const glotResult = await executeGlotCode(languageId, code, token.trim());
+    const glotResult = await executeGlotCode(languageId, finalFiles, token.trim());
 
     // Check if Glot.io hit a DNS error, Cloudflare error, or network timeout/failure
-    const isGlotUnavailable = 
+    const isGlotUnavailable =
       glotResult.error && (
         glotResult.error.includes("530") ||
         glotResult.error.includes("1016") ||
@@ -155,17 +173,17 @@ export async function executeCode(languageId, code, token) {
       );
 
     if (isGlotUnavailable) {
-      const wandboxResult = await executeWandboxCode(languageId, code);
+      const wandboxResult = await executeWandboxCode(languageId, finalFiles, mainFile);
       const fallbackWarning = "// Note: Glot.io compiler is currently offline (DNS/Network Error). Automatically fell back to free Wandbox compiler.";
       return {
         stdout: wandboxResult.stdout,
         stderr: wandboxResult.stderr,
-        error: wandboxResult.error 
-          ? `${wandboxResult.error}\n\n${fallbackWarning}` 
+        error: wandboxResult.error
+          ? `${wandboxResult.error}\n\n${fallbackWarning}`
           : fallbackWarning
       };
     }
     return glotResult;
   }
-  return executeWandboxCode(languageId, code);
+  return executeWandboxCode(languageId, finalFiles, mainFile);
 }

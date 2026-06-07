@@ -17,6 +17,7 @@
 
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getPrivateNoteBySlug,
   updateNote,
@@ -177,13 +178,41 @@ export default function EditNote() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  const queryClient = useQueryClient();
+
+  const { data: noteInitial = null, isLoading: noteLoading } = useQuery({
+    queryKey: ["note", slug, user?.uid],
+    queryFn: () => getPrivateNoteBySlug(user.uid, slug),
+    enabled: !!user && !!slug,
+  });
+
+  const { data: folders = [] } = useQuery({
+    queryKey: ["folders", user?.uid],
+    queryFn: () => getUserFolders(user.uid),
+    enabled: !!user,
+  });
+
   const [note,    setNote]    = useState(null);
-  const [folders, setFolders] = useState([]);
   const [tags,    setTags]    = useState([]);
   const [saving,  setSaving]  = useState(false);
   const [dirty,   setDirty]   = useState(false);
   const [error,   setError]   = useState(null);
   const [savedAt, setSavedAt] = useState(null);
+
+  // Sync initial note load with editable local state
+  useEffect(() => {
+    if (noteInitial) {
+      setNote(noteInitial);
+      setTags(noteInitial.tags ?? []);
+    }
+  }, [noteInitial]);
+
+  // Redirect if note not found after loading
+  useEffect(() => {
+    if (!noteLoading && noteInitial === null) {
+      navigate("/");
+    }
+  }, [noteLoading, noteInitial, navigate]);
 
   /** Immutable field updater — replaces scattered { ...note, x } calls */
   const patch = useCallback((fields) => {
@@ -191,22 +220,6 @@ export default function EditNote() {
     setDirty(true);
     setError(null);
   }, []);
-
-  // ── Load note ──────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!user) return;
-    getPrivateNoteBySlug(user.uid, slug).then((data) => {
-      if (!data) return navigate("/");
-      setNote(data);
-      setTags(data.tags ?? []);
-    });
-  }, [slug, user, navigate]);
-
-  // ── Load folders ───────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!user) return;
-    getUserFolders(user.uid).then(setFolders).catch(() => setFolders([]));
-  }, [user]);
 
   // ── Browser tab close guard ────────────────────────────────────────────────
   useEffect(() => {
@@ -243,6 +256,8 @@ export default function EditNote() {
       });
       setDirty(false);
       setSavedAt(new Date());
+      queryClient.invalidateQueries({ queryKey: ["note", slug, user.uid] });
+      queryClient.invalidateQueries({ queryKey: ["notes", user.uid] });
     } catch (err) {
       console.error(err);
       setError("Failed to save. Please try again.");

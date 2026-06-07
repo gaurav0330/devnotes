@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   getPublicNoteBySlug,
   getPrivateNoteBySlug,
@@ -178,9 +179,30 @@ export default function ViewNote() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [note, setNote] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [isOwner, setIsOwner] = useState(false);
+  const { data: note = null, isLoading: loading } = useQuery({
+    queryKey: ["note", slug, user?.uid],
+    queryFn: async () => {
+      const publicNote = await getPublicNoteBySlug(slug);
+      if (publicNote) {
+        return { ...publicNote, visibility: "public" };
+      }
+      if (user) {
+        const privateNote = await getPrivateNoteBySlug(user.uid, slug);
+        if (privateNote) {
+          return { ...privateNote, visibility: privateNote.visibility || "private" };
+        }
+      }
+      return null;
+    },
+    enabled: !!slug,
+  });
+
+  const isOwner = Boolean(
+    note && 
+    user && 
+    (note.visibility === "public" ? note.userId === user.uid : true)
+  );
+
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState(null); // "pdf" | "md" | null
@@ -335,40 +357,6 @@ export default function ViewNote() {
       pre.appendChild(button);
     });
   }, [note?.content]);
-
-  // Load Note content
-  useEffect(() => {
-    const loadNote = async () => {
-      try {
-        const publicNote = await getPublicNoteBySlug(slug);
-        if (publicNote) {
-          setNote({ ...publicNote, visibility: "public" });
-          setIsOwner(Boolean(user && publicNote.userId === user.uid));
-          setLoading(false);
-          return;
-        }
-
-        if (user) {
-          const privateNote = await getPrivateNoteBySlug(user.uid, slug);
-          if (privateNote) {
-            setNote({ ...privateNote, visibility: privateNote.visibility || "private" });
-            setIsOwner(true);
-            setLoading(false);
-            return;
-          }
-        }
-
-        setNote(null);
-      } catch (err) {
-        console.error(err);
-        setNote(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadNote();
-  }, [slug, user]);
 
   const handleDelete = async () => {
     if (!isOwner || !note || !user) return;

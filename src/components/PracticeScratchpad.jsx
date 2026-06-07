@@ -12,8 +12,12 @@ import {
   Eye,
   EyeOff,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Plus,
+  X,
+  FileCode
 } from "lucide-react";
+import Editor from "@monaco-editor/react";
 import { LANGUAGES, executeCode } from "@/lib/codeRunner.service";
 
 // Formatting helper function (Prettier-like indentation adjustment)
@@ -43,6 +47,19 @@ function formatCode(code) {
   return formatted.join("\n");
 }
 
+function getMonacoLanguage(filename) {
+  const ext = filename.split(".").pop().toLowerCase();
+  if (ext === "js" || ext === "jsx") return "javascript";
+  if (ext === "py") return "python";
+  if (ext === "cpp" || ext === "cc" || ext === "h" || ext === "hpp") return "cpp";
+  if (ext === "java") return "java";
+  if (ext === "css") return "css";
+  if (ext === "html") return "html";
+  if (ext === "json") return "json";
+  if (ext === "md") return "markdown";
+  return "plaintext";
+}
+
 export default function PracticeScratchpad({ slug }) {
   // Localized states
   const [scratchpadCopied, setScratchpadCopied] = useState(false);
@@ -53,13 +70,37 @@ export default function PracticeScratchpad({ slug }) {
     return localStorage.getItem(`scratchpad_lang_${slug}`) || "javascript";
   });
   
-  const [scratchpadText, setScratchpadText] = useState(() => {
-    const savedText = localStorage.getItem(`scratchpad_${slug}`);
-    if (savedText !== null) return savedText;
-    // Load default boilerplate if new
+  // Files workspace state (with backward compatible migration)
+  const [files, setFiles] = useState(() => {
+    const savedFiles = localStorage.getItem(`scratchpad_files_${slug}`);
+    if (savedFiles) {
+      try {
+        const parsed = JSON.parse(savedFiles);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        console.error("Failed to parse scratchpad files:", e);
+      }
+    }
+
+    // Try migration from old scratchpadText
+    const oldText = localStorage.getItem(`scratchpad_${slug}`);
     const initialLang = localStorage.getItem(`scratchpad_lang_${slug}`) || "javascript";
     const conf = LANGUAGES.find(l => l.id === initialLang);
-    return conf ? conf.boilerplate : "";
+    const mainFile = conf ? conf.glotFile : "main.js";
+
+    if (oldText !== null) {
+      return [{ name: mainFile, content: oldText }];
+    }
+
+    // Fallback to default boilerplate
+    const defaultBoilerplate = conf ? conf.boilerplate : "";
+    return [{ name: mainFile, content: defaultBoilerplate }];
+  });
+
+  const [activeFileName, setActiveFileName] = useState(() => {
+    const savedActive = localStorage.getItem(`scratchpad_active_file_${slug}`);
+    if (savedActive && files.some(f => f.name === savedActive)) return savedActive;
+    return files[0]?.name || "main.js";
   });
 
   // Token configuration state (optional Glot.io execution)
@@ -89,8 +130,12 @@ export default function PracticeScratchpad({ slug }) {
 
   // Sync states with localStorage
   useEffect(() => {
-    localStorage.setItem(`scratchpad_${slug}`, scratchpadText);
-  }, [scratchpadText, slug]);
+    localStorage.setItem(`scratchpad_files_${slug}`, JSON.stringify(files));
+  }, [files, slug]);
+
+  useEffect(() => {
+    localStorage.setItem(`scratchpad_active_file_${slug}`, activeFileName);
+  }, [activeFileName, slug]);
 
   useEffect(() => {
     localStorage.setItem("scratchpad_show_console", showConsole.toString());
@@ -138,7 +183,6 @@ export default function PracticeScratchpad({ slug }) {
       const consoleElement = document.getElementById("scratchpad-console");
       if (consoleElement) {
         const rect = consoleElement.getBoundingClientRect();
-        // Console height increases as clientY moves upwards relative to bottom boundary
         const newHeight = Math.max(100, Math.min(380, rect.bottom - e.clientY));
         setConsoleHeight(newHeight);
       }
@@ -162,45 +206,57 @@ export default function PracticeScratchpad({ slug }) {
     };
   }, [isResizingConsole]);
 
-  // Copy code to clipboard handler
+  // Copy code of active file to clipboard
   const copyScratchpad = useCallback(async () => {
+    const activeFile = files.find(f => f.name === activeFileName);
+    const contentToCopy = activeFile ? activeFile.content : "";
     try {
-      await navigator.clipboard.writeText(scratchpadText);
+      await navigator.clipboard.writeText(contentToCopy);
       setScratchpadCopied(true);
       setTimeout(() => setScratchpadCopied(false), 2000);
     } catch (err) {
       console.error("Failed to copy scratchpad text: ", err);
     }
-  }, [scratchpadText]);
+  }, [files, activeFileName]);
 
-  // Clear editor content handler
+  // Clear current active file content
   const clearScratchpad = useCallback(() => {
-    if (window.confirm("Are you sure you want to clear your scratchpad?")) {
-      setScratchpadText("");
+    if (window.confirm(`Are you sure you want to clear ${activeFileName}?`)) {
+      setFiles((prev) =>
+        prev.map((f) => (f.name === activeFileName ? { ...f, content: "" } : f))
+      );
     }
-  }, []);
+  }, [activeFileName]);
 
   // Language change handler (loads boilerplate if empty or matching old boilerplate)
   const handleLanguageChange = (langId) => {
     setSelectedLanguage(langId);
-    const currentConf = LANGUAGES.find(l => l.id === selectedLanguage);
-    const currentBoilerplate = currentConf ? currentConf.boilerplate : "";
+    
+    // Find details
     const newConf = LANGUAGES.find(l => l.id === langId);
+    const newFile = newConf ? newConf.glotFile : "main.js";
     const newBoilerplate = newConf ? newConf.boilerplate : "";
 
-    if (!scratchpadText.trim() || scratchpadText.trim() === currentBoilerplate.trim()) {
-      setScratchpadText(newBoilerplate);
+    // If there's only one file, and its content is either empty or matches some other language's boilerplate, reset it
+    const isSingleDefault = files.length === 1 && (
+      !files[0].content.trim() || 
+      LANGUAGES.some(l => l.boilerplate.trim() === files[0].content.trim())
+    );
+
+    if (isSingleDefault) {
+      setFiles([{ name: newFile, content: newBoilerplate }]);
+      setActiveFileName(newFile);
     }
   };
 
-  // Run Code logic using Wandbox API
+  // Run Code logic using Wandbox/Glot.io APIs
   const handleRunCode = async () => {
     if (isRunning) return;
     setIsRunning(true);
     setConsoleOutputs({ status: "running", stdout: "", stderr: "", error: "" });
 
     try {
-      const result = await executeCode(selectedLanguage, scratchpadText, apiToken);
+      const result = await executeCode(selectedLanguage, files, activeFileName, apiToken);
       setConsoleOutputs(result);
     } catch (err) {
       setConsoleOutputs({
@@ -217,22 +273,59 @@ export default function PracticeScratchpad({ slug }) {
     setConsoleOutputs(null);
   };
 
-  // Textarea and Line numbers scrolling sync
-  const textareaRef = useRef(null);
-  const lineNumbersRef = useRef(null);
-
-  const handleScroll = useCallback(() => {
-    if (textareaRef.current && lineNumbersRef.current) {
-      lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
+  // Create new file
+  const handleCreateFile = () => {
+    const filename = window.prompt("Enter new filename (e.g. helper.js):");
+    if (!filename || !filename.trim()) return;
+    const name = filename.trim();
+    if (files.some(f => f.name === name)) {
+      alert("A file with this name already exists.");
+      return;
     }
-  }, []);
+    const newFile = { name, content: "" };
+    setFiles(prev => [...prev, newFile]);
+    setActiveFileName(name);
+  };
 
-  // Calculate line numbers list
-  const lineCount = scratchpadText.split("\n").length || 1;
-  const lineNumbers = Array.from({ length: lineCount }, (_, i) => i + 1);
+  // Delete file
+  const handleDeleteFile = (nameToDelete) => {
+    if (files.length <= 1) return;
+    if (window.confirm(`Are you sure you want to delete ${nameToDelete}?`)) {
+      setFiles(prev => prev.filter(f => f.name !== nameToDelete));
+      if (activeFileName === nameToDelete) {
+        const remaining = files.filter(f => f.name !== nameToDelete);
+        setActiveFileName(remaining[0].name);
+      }
+    }
+  };
 
-  const fontSizeStyle = scratchpadFontSize === "xs" ? "12px" : scratchpadFontSize === "sm" ? "14px" : "16px";
-  const lineHeightStyle = "22px";
+  // Monaco change handler
+  const handleEditorChange = (value) => {
+    setFiles(prev =>
+      prev.map(f => f.name === activeFileName ? { ...f, content: value || "" } : f)
+    );
+  };
+
+  const activeFile = files.find(f => f.name === activeFileName);
+  const activeContent = activeFile ? activeFile.content : "";
+
+  // Monaco Editor settings
+  const monacoFontSize = scratchpadFontSize === "xs" ? 12 : scratchpadFontSize === "sm" ? 14 : 16;
+  const editorOptions = {
+    minimap: { enabled: false },
+    fontSize: monacoFontSize,
+    lineNumbers: "on",
+    automaticLayout: true,
+    tabSize: 2,
+    wordWrap: "off",
+    scrollbar: {
+      verticalScrollbarSize: 8,
+      horizontalScrollbarSize: 8,
+    },
+    padding: { top: 12, bottom: 12 },
+    fontFamily: "'Courier New', Courier, monospace",
+    fontWeight: "600",
+  };
 
   return (
     <div className="border border-border/40 rounded-3xl overflow-hidden bg-card shadow-premium p-6 md:p-8 space-y-4 flex flex-col h-[750px] max-h-[calc(100vh-10rem)] sticky top-32 self-start z-20 animate-scale-in">
@@ -250,7 +343,7 @@ export default function PracticeScratchpad({ slug }) {
             className={`gap-1.5 h-8 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer ${
               scratchpadCopied ? "border-emerald-500/50 text-emerald-500 bg-emerald-500/5 hover:bg-emerald-500/5" : ""
             }`}
-            title="Copy Scratchpad Content"
+            title="Copy Active File Content"
           >
             {scratchpadCopied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
             <span className="text-xs">{scratchpadCopied ? "Copied!" : "Copy"}</span>
@@ -261,9 +354,9 @@ export default function PracticeScratchpad({ slug }) {
             size="sm"
             variant="outline"
             onClick={clearScratchpad}
-            disabled={!scratchpadText}
+            disabled={!activeContent}
             className="gap-1.5 h-8 text-muted-foreground hover:text-destructive hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
-            title="Clear Scratchpad Content"
+            title="Clear Active File Content"
           >
             <Eraser className="h-3.5 w-3.5" />
             <span className="text-xs">Clear</span>
@@ -316,7 +409,10 @@ export default function PracticeScratchpad({ slug }) {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => setScratchpadText(formatCode(scratchpadText))}
+            onClick={() => {
+              const formatted = formatCode(activeContent);
+              setFiles(prev => prev.map(f => f.name === activeFileName ? { ...f, content: formatted } : f));
+            }}
             className="gap-1.5 h-8 text-xs font-semibold px-3 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer bg-card border border-border/50 shrink-0"
             title="Format Code"
           >
@@ -414,7 +510,7 @@ export default function PracticeScratchpad({ slug }) {
           <Button
             size="sm"
             onClick={handleRunCode}
-            disabled={isRunning || !scratchpadText}
+            disabled={isRunning || !activeContent}
             className={`gap-1.5 h-8 text-xs font-bold px-4 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer shrink-0 ${
               isRunning ? "bg-muted text-muted-foreground" : "bg-emerald-600 hover:bg-emerald-500 text-white"
             }`}
@@ -425,32 +521,59 @@ export default function PracticeScratchpad({ slug }) {
           </Button>
         </div>
       </div>
+
+      {/* Tabbed Multi-File Workspace Tabs */}
+      <div className="flex items-center gap-1 bg-muted/10 border-b border-border/40 px-2 py-1 shrink-0 overflow-x-auto scrollbar-none h-9 rounded-xl">
+        {files.map((file) => {
+          const isActive = file.name === activeFileName;
+          return (
+            <div
+              key={file.name}
+              className={`group flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold select-none cursor-pointer transition-all border ${
+                isActive
+                  ? "bg-card text-foreground border-border/50 shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/20 border-transparent"
+              }`}
+              onClick={() => setActiveFileName(file.name)}
+            >
+              <FileCode className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="truncate max-w-[100px]">{file.name}</span>
+              {files.length > 1 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteFile(file.name);
+                  }}
+                  className="p-0.5 rounded-md text-muted-foreground/50 hover:text-rose-500 hover:bg-muted/40 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all cursor-pointer shrink-0"
+                  title="Delete File"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              )}
+            </div>
+          );
+        })}
+        
+        {/* Create File Button */}
+        <button
+          onClick={handleCreateFile}
+          className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/20 transition-all cursor-pointer ml-1 shrink-0"
+          title="Create New File"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
       
       {/* Code Editor Container */}
-      <div className="flex-1 flex overflow-hidden rounded-2xl bg-muted/30 border border-border/60 relative min-h-[160px]">
-        {/* Line numbers display */}
-        <div 
-          ref={lineNumbersRef}
-          className="w-10 text-right pr-2 select-none text-muted-foreground/30 font-mono py-4 overflow-hidden border-r border-border/10 bg-muted/10 shrink-0 text-xs"
-          style={{ fontSize: fontSizeStyle, lineHeight: lineHeightStyle }}
-        >
-          {lineNumbers.map((num) => (
-            <div key={num} style={{ height: lineHeightStyle }}>
-              {num}
-            </div>
-          ))}
-        </div>
-
-        {/* Editor input textarea */}
-        <textarea
-          ref={textareaRef}
-          value={scratchpadText}
-          onChange={(e) => setScratchpadText(e.target.value)}
-          onScroll={handleScroll}
-          placeholder="// Paste some code from the note here to practice, edit, or modify..."
-          wrap="off"
-          className="flex-1 p-4 pl-3 bg-transparent font-mono resize-none focus:outline-none placeholder:text-muted-foreground/30 text-foreground overflow-auto overscroll-contain"
-          style={{ fontSize: fontSizeStyle, lineHeight: lineHeightStyle }}
+      <div className="flex-1 flex overflow-hidden rounded-2xl border border-border/60 relative min-h-[160px] bg-[#1e1e1e]">
+        <Editor
+          height="100%"
+          language={getMonacoLanguage(activeFileName)}
+          theme="vs-dark"
+          value={activeContent}
+          onChange={handleEditorChange}
+          options={editorOptions}
+          loading={<div className="flex-1 flex items-center justify-center text-xs text-muted-foreground animate-pulse">// Loading Monaco Editor...</div>}
         />
       </div>
 
