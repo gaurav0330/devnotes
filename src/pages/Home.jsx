@@ -16,6 +16,7 @@ import {
   updateFolder,
 } from "@/lib/notes.service";
 import { useAuth } from "@/context/AuthContext";
+import { usePreferences } from "@/context/PreferencesContext";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -106,33 +107,27 @@ export default function Home() {
   const [sort, setSort] = useState("latest");
   const [visibleCount, setVisibleCount] = useState(12);
 
-  // Folder reordering, display sorting, filtering, and renaming states
-  const [folderOrder, setFolderOrder] = useState(() => {
-    if (!user) return [];
-    try {
-      const saved = localStorage.getItem(`folder_order_${user.uid}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [folderSort, setFolderSort] = useState(() => localStorage.getItem("folder_sort_pref") || "custom"); // "custom" | "alphabetical" | "count"
-  const [folderFilter, setFolderFilter] = useState(() => localStorage.getItem("folder_filter_pref") || "all"); // "all" | "active"
+  // Preferences synchronization context
+  const {
+    sidebarOpen,
+    toggleSidebar,
+    sidebarWidth,
+    setSidebarWidth,
+    folderSort,
+    setFolderSort,
+    folderFilter,
+    setFolderFilter,
+    folderOrder,
+    setFolderOrder,
+    pinnedFolders,
+    setPinnedFolders,
+    pinnedTrackers,
+    setPinnedTrackers
+  } = usePreferences();
+
   const [showFolderOptions, setShowFolderOptions] = useState(false);
   const [editingFolderId, setEditingFolderId] = useState(null);
   const [editingFolderName, setEditingFolderName] = useState("");
-
-  // Sidebar open/collapse state (persisted in localStorage)
-  const [sidebarOpen, setSidebarOpen] = useState(() => {
-    const saved = localStorage.getItem("sidebar_open_pref");
-    return saved !== null ? JSON.parse(saved) : true;
-  });
-
-  // Sidebar width states & grab-resize logic
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const saved = localStorage.getItem("sidebar_width_pref");
-    return saved ? parseInt(saved, 10) : 288;
-  });
   const [isResizing, setIsResizing] = useState(false);
 
   const sidebarWidthRef = useRef(sidebarWidth);
@@ -156,7 +151,6 @@ export default function Home() {
 
     const handleMouseUp = () => {
       setIsResizing(false);
-      localStorage.setItem("sidebar_width_pref", sidebarWidthRef.current.toString());
     };
 
     document.addEventListener("mousemove", handleMouseMove);
@@ -170,98 +164,23 @@ export default function Home() {
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
-  }, [isResizing]);
-
-  // Pinned collections states
-  const [pinnedFolders, setPinnedFolders] = useState(() => {
-    if (!user) return [];
-    try {
-      const saved = localStorage.getItem(`pinned_folders_${user.uid}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [pinnedTrackers, setPinnedTrackers] = useState(() => {
-    if (!user) return [];
-    try {
-      const saved = localStorage.getItem(`pinned_trackers_${user.uid}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  }, [isResizing, setSidebarWidth]);
 
   const folderOptionsRef = useRef(null);
 
-  // Toggle sidebar action
-  const toggleSidebar = useCallback(() => {
-    setSidebarOpen(prev => {
-      const newVal = !prev;
-      localStorage.setItem("sidebar_open_pref", JSON.stringify(newVal));
-      return newVal;
-    });
-  }, []);
-
   // Toggle pin folder action
   const togglePinFolder = useCallback((folderId) => {
-    setPinnedFolders(prev => {
-      const updated = prev.includes(folderId)
-        ? prev.filter(id => id !== folderId)
-        : [...prev, folderId];
-      if (user) {
-        localStorage.setItem(`pinned_folders_${user.uid}`, JSON.stringify(updated));
-      }
-      return updated;
-    });
-  }, [user]);
+    setPinnedFolders(prev =>
+      prev.includes(folderId) ? prev.filter(id => id !== folderId) : [...prev, folderId]
+    );
+  }, [setPinnedFolders]);
 
   // Toggle pin tracker action
   const togglePinTracker = useCallback((trackerId) => {
-    setPinnedTrackers(prev => {
-      const updated = prev.includes(trackerId)
-        ? prev.filter(id => id !== trackerId)
-        : [...prev, trackerId];
-      if (user) {
-        localStorage.setItem(`pinned_trackers_${user.uid}`, JSON.stringify(updated));
-      }
-      return updated;
-    });
-  }, [user]);
-
-  // Sync pinned states on login changes
-  useEffect(() => {
-    if (!user) return;
-    try {
-      const savedF = localStorage.getItem(`pinned_folders_${user.uid}`);
-      setPinnedFolders(savedF ? JSON.parse(savedF) : []);
-      const savedT = localStorage.getItem(`pinned_trackers_${user.uid}`);
-      setPinnedTrackers(savedT ? JSON.parse(savedT) : []);
-    } catch {
-      setPinnedFolders([]);
-      setPinnedTrackers([]);
-    }
-  }, [user]);
-
-  // Sync folder order with user changes
-  useEffect(() => {
-    if (!user) return;
-    try {
-      const saved = localStorage.getItem(`folder_order_${user.uid}`);
-      setFolderOrder(saved ? JSON.parse(saved) : []);
-    } catch {
-      setFolderOrder([]);
-    }
-  }, [user]);
-
-  // Persist folder view preferences
-  useEffect(() => {
-    localStorage.setItem("folder_sort_pref", folderSort);
-  }, [folderSort]);
-
-  useEffect(() => {
-    localStorage.setItem("folder_filter_pref", folderFilter);
-  }, [folderFilter]);
+    setPinnedTrackers(prev =>
+      prev.includes(trackerId) ? prev.filter(id => id !== trackerId) : [...prev, trackerId]
+    );
+  }, [setPinnedTrackers]);
 
   // Close folder display options dropdown when clicking outside
   useEffect(() => {
@@ -618,10 +537,7 @@ export default function Home() {
     newOrder[newIndex] = temp;
 
     setFolderOrder(newOrder);
-    if (user) {
-      localStorage.setItem(`folder_order_${user.uid}`, JSON.stringify(newOrder));
-    }
-  }, [user, sortedFolders]);
+  }, [sortedFolders, setFolderOrder]);
 
   const reorderFolders = useCallback((draggedId, targetId) => {
     if (draggedId === targetId) return;
@@ -637,10 +553,7 @@ export default function Home() {
     newOrder.splice(targetIdx, 0, draggedId);
 
     setFolderOrder(newOrder);
-    if (user) {
-      localStorage.setItem(`folder_order_${user.uid}`, JSON.stringify(newOrder));
-    }
-  }, [user, sortedFolders]);
+  }, [sortedFolders, setFolderOrder]);
 
   // Renaming folder logic
   const handleRenameFolder = useCallback(async (folderId) => {

@@ -1,21 +1,12 @@
 import React, {
-  useState,
   useEffect,
-  useCallback,
 } from "react";
 import { THEMES } from "./themes";
 import { ThemeContext } from "./ThemeContext";
-
-const STORAGE_KEY_THEME = "app-theme-id";
-const STORAGE_KEY_DARK  = "app-theme-dark";
+import { usePreferences } from "./PreferencesContext";
 
 export function ThemeProvider({ children }) {
-  const [themeId, setThemeId] = useState(
-    () => localStorage.getItem(STORAGE_KEY_THEME) ?? "midnight"
-  );
-  const [isDark, setIsDark] = useState(
-    () => localStorage.getItem(STORAGE_KEY_DARK) !== "false"
-  );
+  const { themeId, setThemeId, darkMode: isDark, toggleDarkMode } = usePreferences();
 
   const currentTheme = THEMES.find((t) => t.id === themeId) ?? THEMES[0];
 
@@ -40,18 +31,8 @@ export function ThemeProvider({ children }) {
     };
   }, [themeId, isDark, currentTheme]);
 
-  const setTheme = useCallback((id) => {
-    setThemeId(id);
-    localStorage.setItem(STORAGE_KEY_THEME, id);
-  }, []);
-
-  const toggleDark = useCallback(() => {
-    setIsDark((prev) => {
-      const next = !prev;
-      localStorage.setItem(STORAGE_KEY_DARK, String(next));
-      return next;
-    });
-  }, []);
+  const setTheme = setThemeId;
+  const toggleDark = toggleDarkMode;
 
   return (
     <ThemeContext.Provider

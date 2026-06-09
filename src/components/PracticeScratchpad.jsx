@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { LANGUAGES, executeCode } from "@/lib/codeRunner.service";
+import { usePreferences } from "@/context/PreferencesContext";
 
 // Formatting helper function (Prettier-like indentation adjustment)
 function formatCode(code) {
@@ -61,9 +62,19 @@ function getMonacoLanguage(filename) {
 }
 
 export default function PracticeScratchpad({ slug }) {
+  const {
+    scratchpadFontSize,
+    setScratchpadFontSize,
+    scratchpadShowConsole: showConsole,
+    setScratchpadShowConsole: setShowConsole,
+    scratchpadConsoleHeight: consoleHeight,
+    setScratchpadConsoleHeight: setConsoleHeight,
+    glotToken: apiToken,
+    setGlotToken: setApiToken
+  } = usePreferences();
+
   // Localized states
   const [scratchpadCopied, setScratchpadCopied] = useState(false);
-  const [scratchpadFontSize, setScratchpadFontSize] = useState(() => localStorage.getItem("scratchpad_font_size_pref") || "xs");
 
   // Language & Execution states
   const [selectedLanguage, setSelectedLanguage] = useState(() => {
@@ -103,10 +114,6 @@ export default function PracticeScratchpad({ slug }) {
     return files[0]?.name || "main.js";
   });
 
-  // Token configuration state (optional Glot.io execution)
-  const [apiToken, setApiToken] = useState(() => {
-    return localStorage.getItem("glot_token") || "";
-  });
   const [showTokenInput, setShowTokenInput] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [tokenSaved, setTokenSaved] = useState(false);
@@ -115,15 +122,7 @@ export default function PracticeScratchpad({ slug }) {
   const [isRunning, setIsRunning] = useState(false);
 
   // Terminal resizing states
-  const [consoleHeight, setConsoleHeight] = useState(() => {
-    const saved = localStorage.getItem("scratchpad_console_height_pref");
-    return saved ? parseInt(saved, 10) : 176;
-  });
   const [isResizingConsole, setIsResizingConsole] = useState(false);
-  const [showConsole, setShowConsole] = useState(() => {
-    const saved = localStorage.getItem("scratchpad_show_console");
-    return saved !== "false";
-  });
 
   const consoleHeightRef = useRef(consoleHeight);
   const tokenRef = useRef(null);
@@ -138,20 +137,8 @@ export default function PracticeScratchpad({ slug }) {
   }, [activeFileName, slug]);
 
   useEffect(() => {
-    localStorage.setItem("scratchpad_show_console", showConsole.toString());
-  }, [showConsole]);
-
-  useEffect(() => {
-    localStorage.setItem("scratchpad_font_size_pref", scratchpadFontSize);
-  }, [scratchpadFontSize]);
-
-  useEffect(() => {
     localStorage.setItem(`scratchpad_lang_${slug}`, selectedLanguage);
   }, [selectedLanguage, slug]);
-
-  useEffect(() => {
-    localStorage.setItem("glot_token", apiToken);
-  }, [apiToken]);
 
   useEffect(() => {
     consoleHeightRef.current = consoleHeight;
@@ -190,7 +177,6 @@ export default function PracticeScratchpad({ slug }) {
 
     const handleMouseUp = () => {
       setIsResizingConsole(false);
-      localStorage.setItem("scratchpad_console_height_pref", consoleHeightRef.current.toString());
     };
 
     document.addEventListener("mousemove", handleMouseMove);
@@ -477,7 +463,7 @@ export default function PracticeScratchpad({ slug }) {
                     </div>
                     <button
                       onClick={() => {
-                        localStorage.setItem("glot_token", apiToken);
+                        setApiToken(apiToken);
                         setTokenSaved(true);
                         setTimeout(() => {
                           setShowTokenInput(false);

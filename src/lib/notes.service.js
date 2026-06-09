@@ -8,6 +8,7 @@ import {
   deleteDoc,
   updateDoc,
   getDoc,
+  setDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import LZString from "lz-string";
@@ -198,7 +199,7 @@ export const getUserNotes = async (userId) => {
     });
 
     return notes
-      .filter((n) => n.type !== "tracker")
+      .filter((n) => n.type !== "tracker" && n.type !== "preferences")
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   } catch (error) {
     console.error("Error fetching user notes:", error);
@@ -533,3 +534,37 @@ export const deleteTracker = async (userId, trackerId) => {
     throw error;
   }
 };
+
+/* ===============================
+   LAYOUT PREFERENCES METHODS
+================================ */
+
+export const getUserPreferences = async (userId) => {
+  if (!userId) return null;
+  try {
+    const docRef = doc(db, "users", userId, "notes", "preferences_layout");
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return snap.data();
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching user preferences:", error);
+    return null;
+  }
+};
+
+export const saveUserPreferences = async (userId, preferences) => {
+  if (!userId) return;
+  try {
+    const docRef = doc(db, "users", userId, "notes", "preferences_layout");
+    await setDoc(docRef, {
+      ...preferences,
+      type: "preferences",
+      updatedAt: Date.now()
+    }, { merge: true });
+  } catch (error) {
+    console.error("Error saving user preferences:", error);
+  }
+};
+
