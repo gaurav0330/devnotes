@@ -20,6 +20,7 @@ import {
 import Editor from "@monaco-editor/react";
 import { LANGUAGES, executeCode } from "@/lib/codeRunner.service";
 import { usePreferences } from "@/context/PreferencesContext";
+import { copyToClipboard } from "@/lib/utils";
 
 // Formatting helper function (Prettier-like indentation adjustment)
 function formatCode(code) {
@@ -196,12 +197,10 @@ export default function PracticeScratchpad({ slug }) {
   const copyScratchpad = useCallback(async () => {
     const activeFile = files.find(f => f.name === activeFileName);
     const contentToCopy = activeFile ? activeFile.content : "";
-    try {
-      await navigator.clipboard.writeText(contentToCopy);
+    const success = await copyToClipboard(contentToCopy);
+    if (success) {
       setScratchpadCopied(true);
       setTimeout(() => setScratchpadCopied(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy scratchpad text: ", err);
     }
   }, [files, activeFileName]);
 

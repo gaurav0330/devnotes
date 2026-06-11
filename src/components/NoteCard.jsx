@@ -16,6 +16,7 @@ import {
   deleteNoteById,
   prefetchNote
 } from "@/lib/notes.service";
+import { copyToClipboard } from "@/lib/utils";
 
 export const Highlight = React.memo(({ text, query }) => {
   if (!query.trim()) return text;
@@ -136,11 +137,13 @@ export const NoteCard = React.memo(({ note, userId, onTogglePin, onRefresh, onDr
       ) : (
         <div className="absolute top-4 right-4 flex gap-2">
           <button
-            onClick={(e) => {
+            onClick={async (e) => {
               e.preventDefault();
               e.stopPropagation();
-              navigator.clipboard.writeText(`${window.location.origin}/note/${note.slug}`);
-              alert("Link copied to clipboard!");
+              const success = await copyToClipboard(`${window.location.origin}/note/${note.slug}`);
+              if (success) {
+                alert("Link copied to clipboard!");
+              }
             }}
             className="p-2 rounded-xl bg-muted text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-primary/10 hover:text-primary border border-border/50 transition-all"
             title="Copy Link"

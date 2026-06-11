@@ -28,6 +28,7 @@ import {
   Eraser,
 } from "lucide-react";
 import PracticeScratchpad from "@/components/PracticeScratchpad";
+import { copyToClipboard } from "@/lib/utils";
 
 // ✅ Native print-based PDF export — works with all CSS color functions (oklab, oklch, etc.)
 // Does NOT use html2canvas so there are no compatibility issues.
@@ -218,7 +219,6 @@ export default function ViewNote() {
   // Scratchpad states
   const [isScratchpadOpen, setIsScratchpadOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const contentRef = useRef(null);
   const settingsRef = useRef(null);
 
   // Adjustable split screen width logic
@@ -317,46 +317,75 @@ export default function ViewNote() {
     const time = Math.max(1, Math.round(words / 200));
     setStats({ words, time });
   }, [note?.content]);
-
   // Handle syntax-highlighting code blocks and inject copy code buttons
+  const contentRef = useRef(null);
+
   useEffect(() => {
-    if (!note?.content || !contentRef.current) return;
-
-    const preElements = contentRef.current.querySelectorAll("pre");
-    preElements.forEach((pre) => {
-      if (pre.querySelector(".copy-code-btn")) return;
-
-      const button = document.createElement("button");
-      button.className = "copy-code-btn";
-      button.title = "Copy Code";
-      button.type = "button";
+    if (!contentRef.current) return;
+    
+    // Give the DOM a tiny fraction of time to ensure innerHTML has fully painted
+    const timer = setTimeout(() => {
+      const preElements = contentRef.current.querySelectorAll("pre");
+      console.log(`[DevNotes DEBUG] Injecting copy buttons for ${preElements.length} <pre> tags.`);
       
-      const copySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
-      const checkSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check"><path d="M20 6 9 17l-5-5"/></svg>`;
-      
-      button.innerHTML = copySvg;
-      
-      button.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const codeElement = pre.querySelector("code");
-        const codeText = codeElement ? codeElement.innerText : pre.innerText;
+      preElements.forEach((pre) => {
+        // Explicitly enforce relative positioning on the pre block so the absolute button aligns correctly inside it
+        pre.style.position = "relative";
         
-        try {
-          await navigator.clipboard.writeText(codeText);
-          button.innerHTML = checkSvg;
-          button.classList.add("success");
-          setTimeout(() => {
-            button.innerHTML = copySvg;
-            button.classList.remove("success");
-          }, 2000);
-        } catch (err) {
-          console.error("Failed to copy text: ", err);
-        }
-      });
+        // Remove any existing copy button to avoid duplicates
+        const existingBtn = pre.querySelector(".copy-code-btn");
+        if (existingBtn) existingBtn.remove();
 
-      pre.appendChild(button);
-    });
-  }, [note?.content]);
+        const button = document.createElement("button");
+        button.className = "copy-code-btn";
+        button.title = "Copy Code";
+        button.type = "button";
+        
+        // Inject inline styles as a fallback just in case the CSS is missing or overridden
+        button.style.position = "absolute";
+        button.style.top = "0.5rem";
+        button.style.right = "0.5rem";
+        button.style.zIndex = "50";
+        
+        const copySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
+        const checkSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check"><path d="M20 6 9 17l-5-5"/></svg>`;
+        
+        button.innerHTML = copySvg;
+        
+        button.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const codeElement = pre.querySelector("code");
+          
+          let codeText = "";
+          if (codeElement) {
+            codeText = codeElement.innerText;
+          } else {
+            const clone = pre.cloneNode(true);
+            const btn = clone.querySelector(".copy-code-btn");
+            if (btn) btn.remove();
+            codeText = clone.innerText;
+          }
+          
+          const success = await copyToClipboard(codeText);
+          if (success) {
+            button.innerHTML = checkSvg;
+            button.classList.add("success");
+            setTimeout(() => {
+              if (document.body.contains(button)) {
+                button.innerHTML = copySvg;
+                button.classList.remove("success");
+              }
+            }, 2000);
+          }
+        });
+
+        // Append the button as the last child of the <pre> tag
+        pre.appendChild(button);
+      });
+    }, 50); // Small timeout allows React to finish DOM mutation completely
+
+    return () => clearTimeout(timer);
+  }); // Removed dependency array so it runs on every render to restore wiped buttons
 
   const handleDelete = async () => {
     if (!isOwner || !note || !user) return;
@@ -372,12 +401,10 @@ export default function ViewNote() {
   };
 
   const copyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
+    const success = await copyToClipboard(window.location.href);
+    if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* ignore */
     }
   };
 
