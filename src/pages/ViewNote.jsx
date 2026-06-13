@@ -29,6 +29,7 @@ import {
   Eraser,
 } from "lucide-react";
 import PracticeScratchpad from "@/components/PracticeScratchpad";
+import RichTextEditor from "@/components/RichTextEditor";
 import { copyToClipboard } from "@/lib/utils";
 
 // ✅ Native print-based PDF export — works with all CSS color functions (oklab, oklch, etc.)
@@ -714,8 +715,12 @@ export default function ViewNote() {
           </div>
 
           {/* Card Body - Content */}
-          <div className={`p-8 md:p-12 prose dark:prose-invert max-w-none ${fontClass} ${sizeClass} transition-all duration-200`}>
-            <div ref={contentRef} dangerouslySetInnerHTML={{ __html: note.content }} />
+          <div className={`p-8 md:p-12 transition-all duration-200`} ref={contentRef}>
+            <RichTextEditor 
+              value={note.content} 
+              readOnly={true} 
+              typographyClasses={`${fontClass} ${sizeClass}`}
+            />
           </div>
         </div>
 

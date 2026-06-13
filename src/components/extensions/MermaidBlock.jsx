@@ -75,29 +75,31 @@ const MermaidComponent = (props) => {
   }, [code, isDark]);
 
   return (
-    <NodeViewWrapper className="my-8 rounded-2xl border border-border/40 bg-gradient-to-br from-card to-card/50 p-3 relative shadow-lg backdrop-blur-xl transition-all focus-within:ring-2 focus-within:ring-primary/30 group" data-drag-handle>
-      <div className="absolute -top-3 -right-2 flex gap-1.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={() => setIsEditing(!isEditing)}
-          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-background border border-border hover:bg-muted rounded-full transition-all shadow-sm"
-          type="button"
-          contentEditable={false}
-        >
-          <Code2 size={14} />
-          {isEditing ? 'Preview' : 'Edit'}
-        </button>
-        <button
-          onClick={() => props.deleteNode()}
-          className="flex items-center justify-center p-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 rounded-full transition-all shadow-sm"
-          type="button"
-          contentEditable={false}
-          title="Delete diagram"
-        >
-          <Trash2 size={14} />
-        </button>
-      </div>
+    <NodeViewWrapper className={`my-8 rounded-2xl border border-border/40 bg-gradient-to-br from-card to-card/50 p-3 relative shadow-lg backdrop-blur-xl transition-all focus-within:ring-2 focus-within:ring-primary/30 group ${editor.isEditable ? '' : 'hover:border-primary/20 hover:shadow-xl'}`} data-drag-handle={editor.isEditable ? true : undefined}>
+      {editor.isEditable && (
+        <div className="absolute -top-3 -right-2 flex gap-1.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={() => setIsEditing(!isEditing)}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-background border border-border hover:bg-muted rounded-full transition-all shadow-sm"
+            type="button"
+            contentEditable={false}
+          >
+            <Code2 size={14} />
+            {isEditing ? 'Preview' : 'Edit'}
+          </button>
+          <button
+            onClick={() => props.deleteNode()}
+            className="flex items-center justify-center p-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 rounded-full transition-all shadow-sm"
+            type="button"
+            contentEditable={false}
+            title="Delete diagram"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      )}
       
-      {isEditing ? (
+      {isEditing && editor.isEditable ? (
         <div className="mt-8">
           <textarea
             value={code}

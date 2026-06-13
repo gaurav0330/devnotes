@@ -242,8 +242,11 @@ export default function RichTextEditor({
   placeholder,
   className = '',
   minHeight = 400,
+  readOnly = false,
+  typographyClasses = '',
 }) {
   const editor = useEditor({
+    editable: !readOnly,
     extensions: [
       StarterKit.configure({ codeBlock: false }),
       Placeholder.configure({
@@ -261,7 +264,7 @@ export default function RichTextEditor({
     onUpdate: ({ editor }) => onChange?.(editor.getHTML()),
     editorProps: {
       attributes: {
-        class: 'prose prose-slate dark:prose-invert max-w-none focus:outline-none px-6 py-5',
+        class: `prose prose-slate dark:prose-invert max-w-none focus:outline-none ${!readOnly ? 'px-6 py-5' : ''} ${typographyClasses}`,
         style: `min-height: ${minHeight}px`,
       },
       transformPastedHTML(html) {
@@ -303,20 +306,20 @@ export default function RichTextEditor({
   return (
     <div
       className={[
-        'flex flex-col rounded-xl border border-border/50 bg-card/30 backdrop-blur-sm shadow-inner',
-        'transition-all focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/50',
+        'flex flex-col transition-all',
+        !readOnly ? 'rounded-xl border border-border/50 bg-card/30 backdrop-blur-sm shadow-inner focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/50' : '',
         className,
       ].join(' ')}
     >
-      <Toolbar editor={editor} />
+      {!readOnly && <Toolbar editor={editor} />}
 
-      {editor && (
+      {editor && !readOnly && (
         <BubbleMenu editor={editor} tippyOptions={{ duration: 80, placement: 'top' }}>
           <BubbleToolbar editor={editor} />
         </BubbleMenu>
       )}
 
-      {editor && (
+      {editor && !readOnly && (
         <FloatingMenu editor={editor} tippyOptions={{ duration: 80, placement: 'left' }}>
           <FloatingToolbar editor={editor} />
         </FloatingMenu>
@@ -324,7 +327,7 @@ export default function RichTextEditor({
 
       <EditorContent editor={editor} className="flex-1 cursor-text" />
 
-      <StatusBar editor={editor} />
+      {!readOnly && <StatusBar editor={editor} />}
 
       <style>{`
         /* Placeholder */
