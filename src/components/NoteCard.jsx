@@ -17,6 +17,8 @@ import {
   prefetchNote
 } from "@/lib/notes.service";
 import { copyToClipboard } from "@/lib/utils";
+import { useDialog } from "@/context/DialogContext";
+import { CheckSquare, Square } from "lucide-react";
 
 export const Highlight = React.memo(({ text, query }) => {
   if (!query.trim()) return text;
@@ -38,7 +40,9 @@ export const Highlight = React.memo(({ text, query }) => {
 });
 Highlight.displayName = "Highlight";
 
-export const NoteCard = React.memo(({ note, userId, onTogglePin, onRefresh, onDragStart, search, animIndex = 0 }) => {
+export const NoteCard = React.memo(({ note, userId, onTogglePin, onRefresh, onDragStart, search, animIndex = 0, isSelectMode, isSelected, onToggleSelect }) => {
+  const { showConfirm, showAlert } = useDialog();
+
   const stripHtml = (html) => {
     if (!html) return "";
     return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
@@ -77,7 +81,12 @@ export const NoteCard = React.memo(({ note, userId, onTogglePin, onRefresh, onDr
   const handleHardDelete = async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (window.confirm("Are you sure you want to permanently delete this note? This cannot be undone.")) {
+    const ok = await showConfirm({
+      title: "Permanently Delete",
+      message: "Are you sure you want to permanently delete this note? This cannot be undone.",
+      type: "danger"
+    });
+    if (ok) {
       try {
         await hardDeleteNoteById(userId, note.id);
         onRefresh?.();
@@ -100,16 +109,23 @@ export const NoteCard = React.memo(({ note, userId, onTogglePin, onRefresh, onDr
 
   return (
     <Link
-      to={note.deletedAt ? "#" : `/note/${note.slug}`}
-      draggable={!note.deletedAt}
-      onDragStart={!note.deletedAt ? onDragStart : undefined}
+      to={isSelectMode || note.deletedAt ? "#" : `/note/${note.slug}`}
+      draggable={!isSelectMode && !note.deletedAt}
+      onClick={(e) => {
+        if (isSelectMode) {
+          e.preventDefault();
+          onToggleSelect();
+        }
+      }}
+      onDragStart={!isSelectMode && !note.deletedAt ? onDragStart : undefined}
       onMouseEnter={() => {
-        if (!note.deletedAt) {
+        if (!isSelectMode && !note.deletedAt) {
           prefetchNote(userId, note.slug, note.visibility);
         }
       }}
       style={{ animationDelay: `${delay}ms` }}
       className={`group relative flex flex-col border border-border/50 rounded-3xl p-6 bg-card transition-all duration-300 overflow-hidden animate-card-in ${
+        isSelected ? "ring-2 ring-primary border-primary shadow-[0_0_20px_hsla(var(--primary),0.2)] bg-primary/5" :
         note.deletedAt 
           ? "opacity-80 hover:opacity-100 border-red-500/20" 
           : "hover:shadow-2xl hover:shadow-primary/5 hover:border-primary/20 card-hover"
@@ -117,7 +133,17 @@ export const NoteCard = React.memo(({ note, userId, onTogglePin, onRefresh, onDr
     >
       <div className={`absolute top-0 left-0 bottom-0 w-1.5 ${note.deletedAt ? 'bg-red-500' : accentColor} opacity-70 group-hover:opacity-100 transition-opacity`} />
       
-      {note.deletedAt ? (
+      {isSelectMode && (
+        <div className="absolute top-4 right-4 z-10 text-primary transition-all animate-in zoom-in">
+          {isSelected ? (
+            <CheckSquare className="h-6 w-6" />
+          ) : (
+            <Square className="h-6 w-6 text-muted-foreground/30 group-hover:text-muted-foreground/60" />
+          )}
+        </div>
+      )}
+
+      {note.deletedAt && !isSelectMode ? (
         <div className="absolute top-4 right-4 flex gap-2">
            <button
             onClick={handleRestore}
@@ -134,7 +160,7 @@ export const NoteCard = React.memo(({ note, userId, onTogglePin, onRefresh, onDr
             <Trash className="h-4 w-4" />
           </button>
         </div>
-      ) : (
+      ) : !isSelectMode && (
         <div className="absolute top-4 right-4 flex gap-2">
           <button
             onClick={async (e) => {
@@ -142,7 +168,7 @@ export const NoteCard = React.memo(({ note, userId, onTogglePin, onRefresh, onDr
               e.stopPropagation();
               const success = await copyToClipboard(`${window.location.origin}/note/${note.slug}`);
               if (success) {
-                alert("Link copied to clipboard!");
+                showAlert({ title: "Copied", message: "Link copied to clipboard!", type: "success" });
               }
             }}
             className="p-2 rounded-xl bg-muted text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-primary/10 hover:text-primary border border-border/50 transition-all"

@@ -5,6 +5,7 @@ import "./index.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { PreferencesProvider } from "@/context/PreferencesContext";
 import { ThemeProvider } from "@/context/ThemeProvider";
+import { DialogProvider } from "@/context/DialogContext";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const queryClient = new QueryClient({
@@ -22,7 +23,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <AuthProvider>
         <PreferencesProvider>
           <ThemeProvider>
-            <App />
+            <DialogProvider>
+              <App />
+            </DialogProvider>
           </ThemeProvider>
         </PreferencesProvider>
       </AuthProvider>

@@ -21,6 +21,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createNote } from "@/lib/notes.service";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { useDialog } from "@/context/DialogContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import RichTextEditor from "@/components/RichTextEditor";
@@ -189,6 +190,7 @@ function DraftBanner({ draft, onRestore, onDiscard }) {
 export default function CreateNote() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { showConfirm } = useDialog();
 
   const [title,      setTitle]      = useState("");
   const [content,    setContent]    = useState("");
@@ -242,12 +244,17 @@ export default function CreateNote() {
   }, []);
 
   // ── Clear all ─────────────────────────────────────────────────────────────
-  const handleClear = useCallback(() => {
+  const handleClear = useCallback(async () => {
     if (!hasContent) return;
-    if (!window.confirm("Clear all fields and discard draft?")) return;
+    const ok = await showConfirm({
+      title: "Clear all",
+      message: "Clear all fields and discard draft?",
+      type: "warning"
+    });
+    if (!ok) return;
     setTitle(""); setContent(""); setTags([]); setVisibility("private");
     clearDraft();
-  }, [hasContent]);
+  }, [hasContent, showConfirm]);
 
   // ── Save ──────────────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {

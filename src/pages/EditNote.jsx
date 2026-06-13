@@ -24,6 +24,7 @@ import {
   getUserFolders,
 } from "@/lib/notes.service";
 import { useAuth } from "@/context/AuthContext";
+import { useDialog } from "@/context/DialogContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import RichTextEditor from "@/components/RichTextEditor";
@@ -177,6 +178,7 @@ export default function EditNote() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { showConfirm } = useDialog();
 
   const queryClient = useQueryClient();
 
@@ -234,10 +236,17 @@ export default function EditNote() {
 
   // ── In-app navigation guard (compatible with <BrowserRouter>) ─────────────
   // useBlocker requires a data router, so we wrap navigate() instead.
-  const safeNavigate = useCallback((to) => {
-    if (dirty && !window.confirm("You have unsaved changes. Leave anyway?")) return;
+  const safeNavigate = useCallback(async (to) => {
+    if (dirty) {
+      const ok = await showConfirm({
+        title: "Unsaved Changes",
+        message: "You have unsaved changes. Leave anyway?",
+        type: "warning"
+      });
+      if (!ok) return;
+    }
     navigate(to);
-  }, [dirty, navigate]);
+  }, [dirty, navigate, showConfirm]);
 
   // ── Save ───────────────────────────────────────────────────────────────────
   const save = useCallback(async () => {

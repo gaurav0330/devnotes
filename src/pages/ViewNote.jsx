@@ -7,6 +7,7 @@ import {
   deleteNoteById,
 } from "@/lib/notes.service";
 import { useAuth } from "@/context/AuthContext";
+import { useDialog } from "@/context/DialogContext";
 import { Button } from "@/components/ui/button";
 import {
   Share2,
@@ -32,10 +33,14 @@ import { copyToClipboard } from "@/lib/utils";
 
 // ✅ Native print-based PDF export — works with all CSS color functions (oklab, oklch, etc.)
 // Does NOT use html2canvas so there are no compatibility issues.
-function exportToPDF(contentHtml, title) {
+function exportToPDF(contentHtml, title, showAlert) {
   const printWindow = window.open("", "_blank", "width=900,height=700");
   if (!printWindow) {
-    alert("Please allow popups for this site to export PDF.");
+    if (showAlert) {
+      showAlert({ title: "Popups Blocked", message: "Please allow popups for this site to export PDF.", type: "warning" });
+    } else {
+      alert("Please allow popups for this site to export PDF.");
+    }
     return;
   }
 
@@ -179,6 +184,7 @@ export default function ViewNote() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { showConfirm, showAlert } = useDialog();
 
   const { data: note = null, isLoading: loading } = useQuery({
     queryKey: ["note", slug, user?.uid],
@@ -389,7 +395,12 @@ export default function ViewNote() {
 
   const handleDelete = async () => {
     if (!isOwner || !note || !user) return;
-    if (!window.confirm("Are you sure you want to delete this note?")) return;
+    const ok = await showConfirm({
+      title: "Delete Note",
+      message: "Are you sure you want to delete this note?",
+      type: "danger"
+    });
+    if (!ok) return;
     setDeleting(true);
     try {
       await deleteNoteById(user.uid, note.privateNoteId || note.id);
@@ -412,7 +423,7 @@ export default function ViewNote() {
     if (!note) return;
     setExporting("pdf");
     try {
-      exportToPDF(note.content, note.title);
+      exportToPDF(note.content, note.title, showAlert);
     } finally {
       setExporting(null);
     }

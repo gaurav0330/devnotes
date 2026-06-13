@@ -20,6 +20,7 @@ import {
 import Editor from "@monaco-editor/react";
 import { LANGUAGES, executeCode } from "@/lib/codeRunner.service";
 import { usePreferences } from "@/context/PreferencesContext";
+import { useDialog } from "@/context/DialogContext";
 import { copyToClipboard } from "@/lib/utils";
 
 // Formatting helper function (Prettier-like indentation adjustment)
@@ -73,6 +74,8 @@ export default function PracticeScratchpad({ slug }) {
     glotToken: apiToken,
     setGlotToken: setApiToken
   } = usePreferences();
+  
+  const { showConfirm, showAlert } = useDialog();
 
   // Localized states
   const [scratchpadCopied, setScratchpadCopied] = useState(false);
@@ -205,13 +208,18 @@ export default function PracticeScratchpad({ slug }) {
   }, [files, activeFileName]);
 
   // Clear current active file content
-  const clearScratchpad = useCallback(() => {
-    if (window.confirm(`Are you sure you want to clear ${activeFileName}?`)) {
+  const clearScratchpad = useCallback(async () => {
+    const ok = await showConfirm({
+      title: "Clear Scratchpad",
+      message: `Are you sure you want to clear ${activeFileName}?`,
+      type: "warning"
+    });
+    if (ok) {
       setFiles((prev) =>
         prev.map((f) => (f.name === activeFileName ? { ...f, content: "" } : f))
       );
     }
-  }, [activeFileName]);
+  }, [activeFileName, showConfirm]);
 
   // Language change handler (loads boilerplate if empty or matching old boilerplate)
   const handleLanguageChange = (langId) => {
@@ -264,7 +272,7 @@ export default function PracticeScratchpad({ slug }) {
     if (!filename || !filename.trim()) return;
     const name = filename.trim();
     if (files.some(f => f.name === name)) {
-      alert("A file with this name already exists.");
+      showAlert({ title: "File Exists", message: "A file with this name already exists.", type: "warning" });
       return;
     }
     const newFile = { name, content: "" };
@@ -273,9 +281,14 @@ export default function PracticeScratchpad({ slug }) {
   };
 
   // Delete file
-  const handleDeleteFile = (nameToDelete) => {
+  const handleDeleteFile = async (nameToDelete) => {
     if (files.length <= 1) return;
-    if (window.confirm(`Are you sure you want to delete ${nameToDelete}?`)) {
+    const ok = await showConfirm({
+      title: "Delete File",
+      message: `Are you sure you want to delete ${nameToDelete}?`,
+      type: "danger"
+    });
+    if (ok) {
       setFiles(prev => prev.filter(f => f.name !== nameToDelete));
       if (activeFileName === nameToDelete) {
         const remaining = files.filter(f => f.name !== nameToDelete);

@@ -17,6 +17,7 @@ import {
 } from "@/lib/notes.service";
 import { useAuth } from "@/context/AuthContext";
 import { usePreferences } from "@/context/PreferencesContext";
+import { useDialog } from "@/context/DialogContext";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,7 +49,11 @@ import {
   ChevronDown,
   SlidersHorizontal,
   Edit,
+  CheckSquare,
+  XSquare,
 } from "lucide-react";
+
+import { hardDeleteNoteById, deleteNoteById } from "@/lib/notes.service";
 
 const normalizeRow = (row, numHeaders) => {
   let cells = row.cells || [];
@@ -76,6 +81,7 @@ export default function Home() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { showConfirm, showAlert } = useDialog();
 
   const { data: notes = [], isLoading: notesLoading } = useQuery({
     queryKey: ["notes", user?.uid],
@@ -106,6 +112,10 @@ export default function Home() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sort, setSort] = useState("latest");
   const [visibleCount, setVisibleCount] = useState(12);
+
+  // Multi-Select state
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedNotes, setSelectedNotes] = useState([]);
 
   // Preferences synchronization context
   const {
@@ -254,6 +264,52 @@ export default function Home() {
   // Highlight search queries in text
 
   /* ----------------------------------------
+     MULTI-SELECT ACTIONS
+  ---------------------------------------- */
+  const toggleNoteSelection = useCallback((noteId) => {
+    setSelectedNotes((prev) => 
+      prev.includes(noteId) ? prev.filter(id => id !== noteId) : [...prev, noteId]
+    );
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedNotes.length === 0) return;
+    const ok = await showConfirm({
+      title: "Delete Selected",
+      message: `Are you sure you want to delete ${selectedNotes.length} notes?`,
+      type: "danger"
+    });
+    if (!ok) return;
+
+    try {
+      if (activeFolder === "trash") {
+        await Promise.all(selectedNotes.map(id => hardDeleteNoteById(user.uid, id)));
+      } else {
+        await Promise.all(selectedNotes.map(id => deleteNoteById(user.uid, id)));
+      }
+      setSelectedNotes([]);
+      setIsSelectMode(false);
+      refresh();
+    } catch (err) {
+      console.error(err);
+      showAlert({ title: "Error", message: "Failed to delete notes.", type: "danger" });
+    }
+  }, [selectedNotes, activeFolder, user, refresh, showConfirm, showAlert]);
+
+  const handleBulkPin = useCallback(async (pin = true) => {
+    if (selectedNotes.length === 0) return;
+    try {
+      await Promise.all(selectedNotes.map(id => togglePinNote(user.uid, id, !pin)));
+      setSelectedNotes([]);
+      setIsSelectMode(false);
+      refresh();
+    } catch (err) {
+      console.error(err);
+      showAlert({ title: "Error", message: "Failed to pin notes.", type: "danger" });
+    }
+  }, [selectedNotes, user, refresh, showAlert]);
+
+  /* ----------------------------------------
      FOLDER ACTIONS
   ---------------------------------------- */
   const handleCreateFolder = useCallback(async (folderName) => {
@@ -269,9 +325,11 @@ export default function Home() {
   }, [user, refresh]);
 
   const handleDeleteFolder = useCallback(async (folderId, folderName) => {
-    const ok = window.confirm(
-      `Delete folder "${folderName}"?\nAll notes inside will be moved to Unfiled.`
-    );
+    const ok = await showConfirm({
+      title: "Delete Folder",
+      message: `Delete folder "${folderName}"?\nAll notes inside will be moved to Unfiled.`,
+      type: "danger"
+    });
     if (!ok) return;
 
     if (activeFolder === folderId) setActiveFolder("all");
@@ -281,8 +339,9 @@ export default function Home() {
       refresh();
     } catch (err) {
       console.error(err);
+      showAlert({ title: "Error", message: "Failed to delete folder", type: "danger" });
     }
-  }, [user, activeFolder, refresh]);
+  }, [user, activeFolder, refresh, showConfirm, showAlert]);
 
   const handleTogglePin = useCallback(async (noteId, currentPinned) => {
     try {
@@ -333,7 +392,11 @@ export default function Home() {
   }, [user, refresh]);
 
   const handleDeleteTracker = useCallback(async (trackerId, trackerName) => {
-    const ok = window.confirm(`Delete tracker "${trackerName}"?\nThis cannot be undone.`);
+    const ok = await showConfirm({
+      title: "Delete Tracker",
+      message: `Delete tracker "${trackerName}"?\nThis cannot be undone.`,
+      type: "danger"
+    });
     if (!ok) return;
 
     if (activeTrackerId === trackerId) setActiveTrackerId(null);
@@ -343,8 +406,9 @@ export default function Home() {
       refresh();
     } catch (err) {
       console.error(err);
+      showAlert({ title: "Error", message: "Failed to delete tracker", type: "danger" });
     }
-  }, [user, activeTrackerId, refresh]);
+  }, [user, activeTrackerId, refresh, showConfirm, showAlert]);
 
   const _handleCreateNoteAndLink = useCallback(async (trackerId, rowId, taskTitle) => {
     try {
@@ -385,9 +449,9 @@ export default function Home() {
       navigate(`/edit/${slug}`);
     } catch (err) {
       console.error("Failed to create & link note:", err);
-      alert("Failed to create & link note: " + err.message);
+      showAlert({ title: "Error", message: "Failed to create & link note: " + err.message, type: "danger" });
     }
-  }, [user, trackers, navigate, queryClient]);
+  }, [user, trackers, navigate, queryClient, showAlert]);
 
 
   const processedNotes = useMemo(() => {
@@ -683,14 +747,27 @@ export default function Home() {
                 />
               </div>
 
-              <Button
-                variant="outline"
-                className="h-12 px-6 rounded-2xl border-border/50 bg-card"
-                onClick={() => setSort(sort === "latest" ? "oldest" : "latest")}
-              >
-                <ArrowUpDown className="h-4 w-4 mr-2 text-primary" />
-                {sort === "latest" ? "Recent first" : "Oldest first"}
-              </Button>
+              <div className="flex gap-4">
+                <Button
+                  variant={isSelectMode ? "default" : "outline"}
+                  className={`h-12 px-6 rounded-2xl border-border/50 ${isSelectMode ? 'bg-primary text-primary-foreground' : 'bg-card'}`}
+                  onClick={() => {
+                    setIsSelectMode(!isSelectMode);
+                    if (isSelectMode) setSelectedNotes([]);
+                  }}
+                >
+                  {isSelectMode ? <XSquare className="h-4 w-4 mr-2" /> : <CheckSquare className="h-4 w-4 mr-2" />}
+                  {isSelectMode ? "Cancel Selection" : "Select"}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-12 px-6 rounded-2xl border-border/50 bg-card"
+                  onClick={() => setSort(sort === "latest" ? "oldest" : "latest")}
+                >
+                  <ArrowUpDown className="h-4 w-4 mr-2 text-primary" />
+                  {sort === "latest" ? "Recent first" : "Oldest first"}
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-12">
@@ -711,6 +788,9 @@ export default function Home() {
                         onDragStart={() => setDraggingId(note.id)}
                         search={debouncedSearch}
                         animIndex={i}
+                        isSelectMode={isSelectMode}
+                        isSelected={selectedNotes.includes(note.id)}
+                        onToggleSelect={() => toggleNoteSelection(note.id)}
                       />
                     ))}
                   </div>
@@ -746,6 +826,9 @@ export default function Home() {
                         onDragStart={() => setDraggingId(note.id)}
                         search={debouncedSearch}
                         animIndex={i}
+                        isSelectMode={isSelectMode}
+                        isSelected={selectedNotes.includes(note.id)}
+                        onToggleSelect={() => toggleNoteSelection(note.id)}
                       />
                     ))}
                   </div>
@@ -763,6 +846,25 @@ export default function Home() {
               </section>
             </div>
           </>
+        )}
+
+        {/* FLOATING ACTION BAR FOR MULTI-SELECT */}
+        {isSelectMode && selectedNotes.length > 0 && (
+          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-card border border-border/50 shadow-2xl rounded-full px-6 py-3 flex items-center gap-6 animate-fade-in z-50">
+            <span className="font-bold text-sm">
+              {selectedNotes.length} selected
+            </span>
+            <div className="flex items-center gap-2 border-l border-border/50 pl-6">
+              {activeFolder !== "trash" && (
+                <Button variant="ghost" size="sm" onClick={() => handleBulkPin(true)} className="hover:bg-primary/10 hover:text-primary">
+                  <Pin className="h-4 w-4 mr-2" /> Pin
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={handleBulkDelete} className="hover:bg-red-500/10 hover:text-red-500 text-red-500">
+                <Trash2 className="h-4 w-4 mr-2" /> Delete
+              </Button>
+            </div>
+          </div>
         )}
       </main>
     </div>

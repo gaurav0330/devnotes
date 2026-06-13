@@ -36,6 +36,7 @@ import React, {
   useRef,
 } from "react";
 import { Plus, Table } from "lucide-react";
+import { useDialog } from "@/context/DialogContext";
 
 import { HeaderThCell } from "./HeaderThCell";
 import TrackerCell from "./TrackerCell";
@@ -54,6 +55,7 @@ import {
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 const TrackerView = ({ tracker, notes, onUpdate, onDelete }) => {
+  const { showConfirm } = useDialog();
   /* ── core data state ─────────────────────────────────────────── */
   const [headers, setHeaders] = useState(
     () => tracker?.headers || DEFAULT_HEADERS
@@ -339,13 +341,18 @@ const TrackerView = ({ tracker, notes, onUpdate, onDelete }) => {
     [rows, tracker.id, onUpdate]
   );
 
-  const clearAllRows = useCallback(() => {
-    if (!window.confirm("Delete ALL rows? This cannot be undone.")) return;
+  const clearAllRows = useCallback(async () => {
+    const ok = await showConfirm({
+      title: "Clear All Rows",
+      message: "Delete ALL rows? This cannot be undone.",
+      type: "danger"
+    });
+    if (!ok) return;
     setRows([]);
     setSelectedCell(null);
     setEditingCell(null);
     onUpdate(tracker.id, { rows: [] });
-  }, [tracker.id, onUpdate]);
+  }, [tracker.id, onUpdate, showConfirm]);
 
   /* ── column management ────────────────────────────────────────── */
   const insertColumn = useCallback(
@@ -402,9 +409,14 @@ const TrackerView = ({ tracker, notes, onUpdate, onDelete }) => {
   );
 
   const deleteColumn = useCallback(
-    (idx) => {
+    async (idx) => {
       if (headers.length <= 1) return;
-      if (!window.confirm(`Delete column "${headers[idx]}"? All data will be lost.`)) return;
+      const ok = await showConfirm({
+        title: "Delete Column",
+        message: `Delete column "${headers[idx]}"? All data will be lost.`,
+        type: "danger"
+      });
+      if (!ok) return;
       const newH = headers.filter((_, i) => i !== idx);
       const newTypes = {};
       const newWidths = {};
@@ -424,7 +436,7 @@ const TrackerView = ({ tracker, notes, onUpdate, onDelete }) => {
       setSelectedCell(null);
       onUpdate(tracker.id, { headers: newH, rows: updated, columnTypes: newTypes, colWidths: newWidths });
     },
-    [headers, columnTypes, colWidths, rows, tracker.id, onUpdate]
+    [headers, columnTypes, colWidths, rows, tracker.id, onUpdate, showConfirm]
   );
 
   const updateColType = useCallback(
