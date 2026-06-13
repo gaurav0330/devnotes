@@ -13,8 +13,10 @@ import { common, createLowlight } from 'lowlight';
 import {
   Bold, Italic, Strikethrough, Code, Heading1, Heading2,
   List, ListOrdered, Quote, Table as TableIcon, Link as LinkIcon,
-  Undo2, Redo2, Minus,
+  Undo2, Redo2, Minus, Workflow,
 } from 'lucide-react';
+
+import { MermaidBlock } from './extensions/MermaidBlock';
 
 import 'highlight.js/styles/github-dark.css';
 
@@ -122,6 +124,7 @@ const Toolbar = ({ editor }) => {
     [
       { icon: <TableIcon size={15} />, title: 'Insert table', onClick: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(), active: editor.isActive('table') },
       { icon: <Minus size={15} />, title: 'Horizontal rule', onClick: () => editor.chain().focus().setHorizontalRule().run() },
+      { icon: <Workflow size={15} />, title: 'Insert diagram', onClick: () => editor.chain().focus().insertContent({ type: 'mermaidBlock' }).run() },
     ],
   ];
 
@@ -252,6 +255,7 @@ export default function RichTextEditor({
       TableRow,
       TableHeader,
       TableCell,
+      MermaidBlock,
     ],
     content: value,
     onUpdate: ({ editor }) => onChange?.(editor.getHTML()),

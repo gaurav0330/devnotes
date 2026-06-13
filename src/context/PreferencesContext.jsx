@@ -8,7 +8,6 @@ export function PreferencesProvider({ children }) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
 
-  // --- Local states (initially from localStorage) ---
   const [themeId, setThemeIdState] = useState(
     () => localStorage.getItem("app-theme-id") ?? "midnight"
   );
