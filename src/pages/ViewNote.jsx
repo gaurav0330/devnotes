@@ -5,6 +5,8 @@ import {
   getPublicNoteBySlug,
   getPrivateNoteBySlug,
   deleteNoteById,
+  getSeriesNotes,
+  getPublicSeriesNotes,
 } from "@/lib/notes.service";
 import { useAuth } from "@/context/AuthContext";
 import { useDialog } from "@/context/DialogContext";
@@ -210,6 +212,24 @@ export default function ViewNote() {
     user && 
     (note.visibility === "public" ? note.userId === user.uid : true)
   );
+
+  const { data: seriesNotes = [] } = useQuery({
+    queryKey: ["series", note?.seriesName, user?.uid, note?.visibility],
+    queryFn: async () => {
+      if (!note?.seriesName) return [];
+      if (note.visibility === "public") {
+         return await getPublicSeriesNotes(note.seriesName);
+      } else if (user) {
+         return await getSeriesNotes(user.uid, note.seriesName);
+      }
+      return [];
+    },
+    enabled: !!note?.seriesName,
+  });
+
+  const currentSeriesIndex = seriesNotes.findIndex(n => n.id === (note.privateNoteId || note.id) || n.id === note.id);
+  const prevNote = currentSeriesIndex > 0 ? seriesNotes[currentSeriesIndex - 1] : null;
+  const nextNote = currentSeriesIndex !== -1 && currentSeriesIndex < seriesNotes.length - 1 ? seriesNotes[currentSeriesIndex + 1] : null;
 
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -481,13 +501,45 @@ export default function ViewNote() {
       ? "prose-base" 
       : "prose-lg";
 
+  const seriesNavigationUI = note.seriesName && seriesNotes.length > 1 ? (
+    <div className="px-6 py-3 border-y border-border/50 bg-muted/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+      {prevNote ? (
+        <Button 
+          variant="ghost" 
+          size="sm"
+          className="w-full sm:w-auto flex flex-col items-start h-auto py-1 px-2 gap-0.5 hover:bg-muted/50"
+          onClick={() => navigate(`/note/${prevNote.slug}`)}
+        >
+          <span className="text-[9px] uppercase font-bold text-muted-foreground/70 tracking-wider flex items-center gap-1"><ArrowLeft className="h-2.5 w-2.5"/> Prev{prevNote.seriesOrder ? `: Part ${prevNote.seriesOrder}` : ''}</span>
+          <span className="font-semibold text-foreground/80 line-clamp-1 text-xs">{prevNote.title}</span>
+        </Button>
+      ) : <div className="hidden sm:block w-[120px]" />}
+      
+      <div className="flex flex-col items-center justify-center">
+        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+          Series
+        </span>
+        <span className="text-xs font-semibold text-primary">
+          {note.seriesName}
+        </span>
+      </div>
+
+      {nextNote ? (
+        <Button 
+          variant="ghost" 
+          size="sm"
+          className="w-full sm:w-auto flex flex-col items-end h-auto py-1 px-2 gap-0.5 hover:bg-muted/50 text-right"
+          onClick={() => navigate(`/note/${nextNote.slug}`)}
+        >
+          <span className="text-[9px] uppercase font-bold text-muted-foreground/70 tracking-wider flex items-center gap-1">Next{nextNote.seriesOrder ? `: Part ${nextNote.seriesOrder}` : ''} <ArrowLeft className="h-2.5 w-2.5 rotate-180"/></span>
+          <span className="font-semibold text-foreground/80 line-clamp-1 text-xs">{nextNote.title}</span>
+        </Button>
+      ) : <div className="hidden sm:block w-[120px]" />}
+    </div>
+  ) : null;
+
   return (
     <div className="min-h-[calc(100vh-4rem)] animate-page-in relative">
-      {/* Scroll reading progress bar */}
-      <div 
-        className="fixed top-16 left-0 h-1 bg-gradient-to-r from-primary via-purple-500 to-indigo-500 transition-all duration-100 ease-out z-[9998]"
-        style={{ width: `${scrollProgress}%` }}
-      />
 
       <div className={`mx-auto p-6 transition-all duration-300 ${isScratchpadOpen ? "max-w-[95vw]" : "max-w-4xl"}`}>
         {/* Top Actions Bar (Sticky) */}
@@ -714,12 +766,16 @@ export default function ViewNote() {
             )}
           </div>
 
+          {/* Series Navigation Header */}
+          {seriesNavigationUI}
+
           {/* Card Body - Content */}
           <div className={`p-8 md:p-12 transition-all duration-200`} ref={contentRef}>
             <RichTextEditor 
               value={note.content} 
               readOnly={true} 
               typographyClasses={`${fontClass} ${sizeClass}`}
+              onMentionClick={(id) => navigate(`/note/${id}`)}
             />
           </div>
         </div>

@@ -126,6 +126,8 @@ export const createNote = async ({
   title,
   content,
   tags = [],
+  seriesName = null,
+  seriesOrder = null,
   userId,
   visibility,
 }) => {
@@ -155,6 +157,8 @@ export const createNote = async ({
       tags: tags.filter((t) => t.trim()),
       visibility,
       folderId: null,
+      seriesName: seriesName ? seriesName.trim() : null,
+      seriesOrder: seriesOrder !== null ? Number(seriesOrder) : null,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -170,6 +174,8 @@ export const createNote = async ({
         previewText,
         slug,
         tags: tags.filter((t) => t.trim()),
+        seriesName: seriesName ? seriesName.trim() : null,
+        seriesOrder: seriesOrder !== null ? Number(seriesOrder) : null,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
@@ -281,6 +287,37 @@ export const getPrivateNoteBySlug = async (userId, slug) => {
 };
 
 /* ---------------------------------------------------
+   READ: SERIES NOTES
+--------------------------------------------------- */
+export const getSeriesNotes = async (userId, seriesName) => {
+  if (!seriesName || !userId) return [];
+  try {
+    const q = query(collection(db, "users", userId, "notes"), where("seriesName", "==", seriesName));
+    const snap = await getDocs(q);
+    return snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.seriesOrder ?? 0) - (b.seriesOrder ?? 0));
+  } catch (error) {
+    console.error("Error fetching series notes:", error);
+    return [];
+  }
+};
+
+export const getPublicSeriesNotes = async (seriesName) => {
+  if (!seriesName) return [];
+  try {
+    const q = query(collection(db, "publicNotes"), where("seriesName", "==", seriesName));
+    const snap = await getDocs(q);
+    return snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.seriesOrder ?? 0) - (b.seriesOrder ?? 0));
+  } catch (error) {
+    console.error("Error fetching public series notes:", error);
+    return [];
+  }
+};
+
+/* ---------------------------------------------------
    UPDATE NOTE (PRIVATE + PUBLIC SYNC)
 --------------------------------------------------- */
 export const updateNote = async ({
@@ -289,6 +326,8 @@ export const updateNote = async ({
   title,
   content,
   tags = [],
+  seriesName = null,
+  seriesOrder = null,
   visibility,
   folderId
 }) => {
@@ -317,6 +356,8 @@ export const updateNote = async ({
       tags: tags.filter((t) => t.trim()),
       visibility,
       folderId: folderId ?? null,
+      seriesName: seriesName ? seriesName.trim() : null,
+      seriesOrder: seriesOrder !== null ? Number(seriesOrder) : null,
       updatedAt: Date.now(),
     });
 
@@ -337,6 +378,8 @@ export const updateNote = async ({
           isCompressed: true,
           previewText,
           tags: tags.filter((t) => t.trim()),
+          seriesName: seriesName ? seriesName.trim() : null,
+          seriesOrder: seriesOrder !== null ? Number(seriesOrder) : null,
           updatedAt: Date.now(),
         });
       } else {
@@ -359,6 +402,8 @@ export const updateNote = async ({
         previewText,
         slug,
         tags: tags.filter((t) => t.trim()),
+        seriesName: seriesName ? seriesName.trim() : null,
+        seriesOrder: seriesOrder !== null ? Number(seriesOrder) : null,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });

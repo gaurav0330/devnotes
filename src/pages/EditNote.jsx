@@ -260,6 +260,8 @@ export default function EditNote() {
         title:      note.title,
         content:    note.content,
         tags,
+        seriesName: note.seriesName ?? null,
+        seriesOrder: note.seriesOrder ?? null,
         visibility: note.visibility,
         folderId:   note.folderId ?? null,
       });
@@ -371,13 +373,32 @@ export default function EditNote() {
             icon={Folder}
             value={note.folderId || ""}
             onChange={(e) => patch({ folderId: e.target.value || null })}
-            className="min-w-[180px]"
+            className="min-w-[140px]"
           >
             <option value="">Unfiled</option>
             {folders.map((f) => (
               <option key={f.id} value={f.id}>{f.name}</option>
             ))}
           </SelectField>
+
+          {/* Series */}
+          <div className="flex gap-1 items-center">
+            <Input
+              value={note.seriesName || ""}
+              onChange={(e) => patch({ seriesName: e.target.value || null })}
+              placeholder="Series name..."
+              className="w-[140px] h-10 bg-background border-input"
+            />
+            {note.seriesName && (
+              <Input
+                type="number"
+                value={note.seriesOrder || ""}
+                onChange={(e) => patch({ seriesOrder: e.target.value ? Number(e.target.value) : null })}
+                placeholder="Part #"
+                className="w-[80px] h-10 bg-background border-input"
+              />
+            )}
+          </div>
 
           {/* Visibility */}
           <SelectField
@@ -417,6 +438,7 @@ export default function EditNote() {
           value={note.content}
           onChange={(content) => patch({ content })}
           placeholder="Start writing your note…"
+          onMentionClick={(id) => safeNavigate(`/note/${id}`)}
         />
 
       </div>

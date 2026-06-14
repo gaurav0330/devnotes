@@ -17,6 +17,9 @@ import {
 } from 'lucide-react';
 
 import { MermaidBlock } from './extensions/MermaidBlock';
+import Mention from '@tiptap/extension-mention';
+import { getSuggestionConfig } from './extensions/mentionSuggestion';
+import { useAuth } from '@/context/AuthContext';
 
 import 'highlight.js/styles/github-dark.css';
 
@@ -244,7 +247,9 @@ export default function RichTextEditor({
   minHeight = 400,
   readOnly = false,
   typographyClasses = '',
+  onMentionClick = null,
 }) {
+  const { user } = useAuth();
   const editor = useEditor({
     editable: !readOnly,
     extensions: [
@@ -259,6 +264,12 @@ export default function RichTextEditor({
       TableHeader,
       TableCell,
       MermaidBlock,
+      Mention.configure({
+        HTMLAttributes: {
+          class: 'mention bg-primary/20 text-primary px-1.5 py-0.5 rounded-md font-semibold cursor-pointer hover:bg-primary/30 transition-colors shadow-sm border border-primary/20',
+        },
+        suggestion: getSuggestionConfig(user?.uid),
+      }),
     ],
     content: value,
     onUpdate: ({ editor }) => onChange?.(editor.getHTML()),
@@ -310,6 +321,17 @@ export default function RichTextEditor({
         !readOnly ? 'rounded-xl border border-border/50 bg-card/30 backdrop-blur-sm shadow-inner focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/50' : '',
         className,
       ].join(' ')}
+      onClick={(e) => {
+        const mentionTarget = e.target.closest('.mention');
+        if (mentionTarget) {
+          const id = mentionTarget.getAttribute('data-id');
+          if (id && onMentionClick) {
+            onMentionClick(id);
+          } else if (id) {
+            window.open(`/note/${id}`, '_blank');
+          }
+        }
+      }}
     >
       {!readOnly && <Toolbar editor={editor} />}
 
